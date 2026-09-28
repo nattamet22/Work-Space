@@ -1,0 +1,2244 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบบริหารจัดการกำลังพล</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --navy:#0F2A43; --navy-light:#17395C; --gold:#C9A24B; }
+  html { -webkit-text-size-adjust:100%; }
+  body { font-family:'Prompt',sans-serif; background-color:#EEF1F5; -webkit-font-smoothing:antialiased; }
+  .sidebar-bg{ background: var(--navy); }
+  .nav-active{ background: rgba(255,255,255,.08); color:#fff; border-color: var(--gold) !important; }
+  .exp-bar { background: linear-gradient(90deg, var(--gold) 0%, #10B981 100%); transition: width .35s cubic-bezier(.4,0,.2,1); }
+  .badge-upcoming { background:#FEF3C7; color:#92400E; }
+  .badge-ongoing  { background:#DBEAFE; color:#1D4ED8; }
+  .badge-done     { background:#D1FAE5; color:#047857; }
+  .badge-late     { background:#FEE2E2; color:#B91C1C; }
+  .badge-unknown  { background:#E5E7EB; color:#374151; }
+  .modal-backdrop { background:rgba(15,23,42,.55); }
+  .card { background:#fff; border-radius:1rem; box-shadow:0 1px 3px rgba(15,23,42,.08); border:1px solid #E2E8F0; }
+  .btn-primary { background: var(--navy); color:#fff; }
+  .btn-primary:hover { background: var(--navy-light); }
+  .hover-lift { transition: transform .15s ease, box-shadow .15s ease; }
+  .hover-lift:hover { transform: translateY(-2px); box-shadow:0 6px 18px rgba(15,23,42,.10); }
+  input, select, button, textarea { font-family:inherit; }
+  :focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:4px; }
+
+  .page-fade-enter-active, .page-fade-leave-active { transition: opacity .13s ease, transform .13s ease; }
+  .page-fade-enter-from { opacity:0; transform: translateY(6px); }
+  .page-fade-leave-to { opacity:0; transform: translateY(-6px); }
+
+  .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity .16s ease; }
+  .modal-fade-enter-from, .modal-fade-leave-to { opacity:0; }
+  .modal-fade-enter-active .modal-panel, .modal-fade-leave-active .modal-panel { transition: transform .18s cubic-bezier(.2,.9,.3,1), opacity .16s ease; }
+  .modal-fade-enter-from .modal-panel, .modal-fade-leave-to .modal-panel { transform: scale(.97) translateY(8px); opacity:0; }
+
+  .toast-enter-active, .toast-leave-active { transition: opacity .2s ease, transform .2s ease; }
+  .toast-enter-from, .toast-leave-to { opacity:0; transform: translateY(12px); }
+
+  /* รายการเข้า-ออกแบบไล่เรียง (personnel/หลักสูตร/งาน) */
+  .list-enter-active { transition: opacity .28s ease, transform .28s cubic-bezier(.2,.8,.3,1); }
+  .list-enter-from { opacity:0; transform: translateY(8px); }
+  .list-leave-active { transition: opacity .15s ease; position:absolute; }
+  .list-leave-to { opacity:0; }
+  .list-move { transition: transform .28s ease; }
+
+  .number-enter-active, .number-leave-active { transition: opacity .15s ease, transform .15s ease; }
+  .number-enter-from { opacity:0; transform: translateY(4px); }
+  .number-leave-to { opacity:0; transform: translateY(-4px); position:absolute; }
+
+  /* เช็คบ็อกซ์ติ๊กเสร็จงาน */
+  .check-enter-active { transition: transform .2s cubic-bezier(.34,1.56,.64,1), opacity .15s ease; }
+  .check-enter-from { transform: scale(.2); opacity:0; }
+
+  button, .btn-primary { transition: transform .1s ease, background-color .15s ease, box-shadow .15s ease; }
+  button:active { transform: scale(.97); }
+
+  /* แผงรายละเอียดงาน: ยืด/ยุบแบบลื่นด้วย grid-template-rows */
+  /* เผย/ซ่อนเนื้อหา (รายละเอียดงาน, รายชื่อเพิ่มกำลังพล) ด้วย v-if จริง ๆ จึงชัวร์ว่าเนื้อหาไม่หายแม้อยู่ในกล่องที่เลื่อนได้ */
+  .reveal-enter-active { transition: opacity .18s ease; }
+  .reveal-enter-from { opacity:0; }
+  .reveal-leave-active { transition: opacity .1s ease; }
+  .reveal-leave-to { opacity:0; }
+
+  .topbar { position:fixed; top:0; left:0; right:0; height:3px; z-index:60; overflow:hidden; }
+  .topbar span { display:block; height:100%; width:40%; background:var(--gold); animation: slide 1s ease-in-out infinite; }
+  @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(320%)} }
+
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+  .spinner { animation: spin-slow .8s linear infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:.001ms !important; transition-duration:.001ms !important; }
+  }
+
+  /* ดรอปดาวน์เมนูส่งออก */
+  .export-menu { position:absolute; right:0; margin-top:.25rem; background:#fff; border:1px solid #E2E8F0; border-radius:.75rem; box-shadow:0 8px 24px rgba(15,23,42,.12); padding:.25rem; z-index:30; width:11rem; }
+  .export-menu button { width:100%; text-align:left; padding:.5rem .75rem; font-size:.8rem; border-radius:.5rem; }
+  .export-menu button:hover { background:#F1F5F9; }
+
+  /* โหมดพิมพ์/บันทึกเป็น PDF: ซ่อนส่วนที่ไม่ใช่เนื้อหา (เมนู ปุ่ม ช่องค้นหา) เหลือแค่ข้อมูลของหน้าปัจจุบัน */
+  @media print {
+    .no-print, aside, header, nav, .modal-backdrop, .topbar { display:none !important; }
+    * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    body, #app { background:#fff !important; }
+    main { padding:0 !important; max-width:100% !important; margin:0 !important; }
+    .card { box-shadow:none !important; border:1px solid #CBD5E1 !important; }
+    .year-scroll-box { overflow:visible !important; }
+    .year-scroll-box > div { min-width:0 !important; width:100% !important; }
+    @page { size: A4 landscape; margin:10mm; }
+  }
+</style>
+</head>
+<body class="text-slate-800">
+<div id="app">
+
+  <!-- หน้าจอเข้าสู่ระบบ: แสดงก่อนเสมอถ้ายังไม่ได้ล็อกอิน ไม่โหลดข้อมูลใดๆ จนกว่าจะผ่านขั้นตอนนี้ -->
+  <div v-if="!loggedIn" class="min-h-screen w-full flex items-center justify-center p-4" style="background:var(--navy)">
+    <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+      <div class="flex flex-col items-center mb-5 text-center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" class="w-10 h-10 shrink-0">
+          <path d="M12 2.5 4 6v6c0 4.8 3.2 8.7 8 9.5 4.8-.8 8-4.7 8-9.5V6l-8-3.5Z" stroke-linejoin="round"/>
+          <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 class="text-base font-semibold mt-2" style="color:var(--navy)">ระบบบริหารจัดการกำลังพล</h1>
+        <p class="text-xs text-slate-400 mt-0.5">เข้าสู่ระบบเพื่อใช้งาน</p>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-slate-500">ชื่อผู้ใช้งาน</label>
+          <input v-model="loginForm.name" @keyup.enter="submitLogin" placeholder="ชื่อผู้ใช้" autocomplete="username"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm mt-1">
+        </div>
+        <div>
+          <label class="text-xs text-slate-500">รหัสผ่าน (PIN)</label>
+          <input v-model="loginForm.pin" @keyup.enter="submitLogin" type="password" inputmode="numeric" pattern="[0-9]*"
+                 placeholder="ตัวเลข 4-8 หลัก" autocomplete="current-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm mt-1">
+        </div>
+        <p v-if="loginError" class="text-xs text-red-600">{{ loginError }}</p>
+        <button @click="submitLogin" :disabled="loginBusy" class="btn-primary w-full py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
+          {{ loginBusy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ' }}
+        </button>
+      </div>
+      <p class="text-[11px] text-slate-400 text-center mt-4">ยังไม่มีบัญชีผู้ใช้งาน ติดต่อผู้ดูแลระบบเพื่อขอชื่อผู้ใช้และ PIN</p>
+    </div>
+  </div>
+
+  <!-- แอปหลัก: แสดงหลังล็อกอินสำเร็จเท่านั้น -->
+  <div v-else class="flex min-h-screen">
+
+  <div v-if="busy" class="topbar"><span></span></div>
+
+  <aside class="hidden md:flex md:flex-col w-64 shrink-0 sidebar-bg text-slate-100 sticky top-0 h-screen">
+    <div class="px-5 py-6 border-b border-white/10 flex items-center gap-3">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.6" class="w-8 h-8 shrink-0">
+        <path d="M12 2.5 4 6v6c0 4.8 3.2 8.7 8 9.5 4.8-.8 8-4.7 8-9.5V6l-8-3.5Z" stroke-linejoin="round"/>
+        <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1 class="text-sm font-semibold leading-snug">ระบบบริหารจัดการกำลังพล</h1>
+        <p class="text-[10px] text-slate-400 mt-0.5 tracking-wide">PERSONNEL &amp; TRAINING SYSTEM</p>
+      </div>
+    </div>
+    <nav class="flex-1 py-3 overflow-y-auto">
+      <button v-for="p in pages" :key="p.id" @click="goTo(p.id)"
+        class="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium border-l-[3px] border-transparent text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+        :class="{'nav-active': currentPage === p.id}">
+        <span class="w-5 h-5 shrink-0" v-html="p.icon"></span>{{ p.label }}
+      </button>
+    </nav>
+    <div class="px-5 py-4 border-t border-white/10 text-[11px] text-amber-300 leading-relaxed" v-if="mockMode">
+      ⚠ กำลังแสดงข้อมูลตัวอย่าง<br>(ยังไม่ได้เชื่อม Google Sheets)
+    </div>
+    <div class="px-5 py-3 border-t border-white/10 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <p class="text-xs font-medium truncate">{{ currentUser && currentUser.name }}</p>
+        <p class="text-[10px] text-slate-400">สิทธิ์: {{ currentUser && currentUser.role }}</p>
+      </div>
+      <button @click="doLogout" class="text-[11px] px-2 py-1 rounded-lg border border-white/20 text-slate-300 hover:bg-white/10 transition-colors shrink-0">ออกจากระบบ</button>
+    </div>
+  </aside>
+
+  <div class="flex-1 min-w-0 flex flex-col">
+    <header class="md:hidden sidebar-bg text-white px-4 py-3 flex items-center gap-2 sticky top-0 z-30">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.6" class="w-6 h-6 shrink-0">
+        <path d="M12 2.5 4 6v6c0 4.8 3.2 8.7 8 9.5 4.8-.8 8-4.7 8-9.5V6l-8-3.5Z" stroke-linejoin="round"/>
+      </svg>
+      <h1 class="text-sm font-semibold">ระบบบริหารจัดการกำลังพล</h1>
+      <button @click="doLogout" class="ml-auto text-[11px] px-2 py-1 rounded-lg border border-white/20 text-slate-300 hover:bg-white/10 transition-colors shrink-0">ออกจากระบบ</button>
+    </header>
+    <p v-if="mockMode" class="md:hidden text-xs text-amber-700 bg-amber-50 px-4 py-1.5">⚠ กำลังแสดงข้อมูลตัวอย่าง</p>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 md:px-8 py-6 pb-24 md:pb-8">
+
+    <div v-if="initialLoading" class="flex flex-col items-center justify-center py-24 text-slate-400">
+      <svg class="spinner w-8 h-8 mb-3" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="2">
+        <circle cx="12" cy="12" r="9" stroke-opacity=".2"/>
+        <path d="M21 12a9 9 0 0 0-9-9"/>
+      </svg>
+      <p class="text-sm">กำลังโหลดข้อมูล...</p>
+    </div>
+
+    <div v-else-if="loadError" class="card p-6 text-center">
+      <p class="font-medium mb-1" style="color:var(--navy)">โหลดข้อมูลไม่สำเร็จ</p>
+      <p class="text-sm text-slate-500 mb-4">{{ loadError }}</p>
+      <button @click="loadAll()" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium">ลองใหม่อีกครั้ง</button>
+    </div>
+
+    <Transition name="page-fade" mode="out-in" v-else>
+    <div :key="currentPage">
+
+    <section v-if="currentPage === 'dashboard'">
+      <div class="flex items-center gap-2 mb-5">
+        <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+        <h2 class="text-lg font-semibold" style="color:var(--navy)">ภาพรวมระบบ</h2>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-5">
+        <div class="card hover-lift p-5">
+          <h3 class="font-semibold text-sm mb-3" style="color:var(--navy)">ข้อมูลกำลังพล</h3>
+          <button @click="goToPersonnel('')" class="w-full text-left hover:opacity-80 transition-opacity mb-3 block">
+            <Transition name="number" mode="out-in"><p :key="dashboard.totalPersonnel" class="text-4xl font-bold" style="color:var(--navy)">{{ dashboard.totalPersonnel ?? '-' }}</p></Transition>
+            <p class="text-xs text-slate-400 mt-0.5">กำลังพลทั้งหมด (คลิกดูรายชื่อ)</p>
+          </button>
+          <div class="space-y-1 border-t border-slate-100 pt-2">
+            <button v-for="(count, status) in (dashboard.statusCount || {})" :key="status" @click="goToPersonnel(status)"
+              class="w-full flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors text-sm">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{background: statusDotColor(status)}"></span>{{ status }}</span>
+              <span class="font-semibold">{{ count }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card hover-lift p-5">
+          <h3 class="font-semibold text-sm mb-3" style="color:var(--navy)">ข้อมูลการฝึก</h3>
+          <div class="grid grid-cols-3 gap-1 text-center">
+            <button @click="goToCourses('กำลังดำเนินการ')" class="rounded-lg p-2.5 hover:bg-blue-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.ongoingCoursesCount" class="text-2xl font-bold text-blue-700">{{ dashboard.ongoingCoursesCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">กำลัง<br>ดำเนินการ</p>
+            </button>
+            <button @click="goToCourses('กำลังจะฝึก')" class="rounded-lg p-2.5 hover:bg-amber-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.upcomingCoursesCount" class="text-2xl font-bold text-amber-600">{{ dashboard.upcomingCoursesCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">กำลังจะ<br>เกิดขึ้น</p>
+            </button>
+            <button @click="goToCourses('ผ่านแล้ว')" class="rounded-lg p-2.5 hover:bg-emerald-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.completedCoursesCount" class="text-2xl font-bold text-emerald-600">{{ dashboard.completedCoursesCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">ผ่านไป<br>แล้ว</p>
+            </button>
+          </div>
+          <div class="flex items-center justify-center gap-2 mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
+            <span>ปี พ.ศ.:</span>
+            <select v-model.number="selectedCompletedYearBE" @change="onChangeCompletedYear" class="border border-slate-200 rounded-lg px-2 py-1 text-xs">
+              <option v-for="y in yearOptionsBE" :key="y" :value="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card hover-lift p-5">
+          <h3 class="font-semibold text-sm mb-3" style="color:var(--navy)">ข้อมูลงาน</h3>
+          <div class="grid grid-cols-3 gap-1 text-center">
+            <button @click="goToTasksFiltered('inprogress')" class="rounded-lg p-2.5 hover:bg-blue-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.taskInProgressCount" class="text-2xl font-bold text-blue-700">{{ dashboard.taskInProgressCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">กำลัง<br>ดำเนินการ</p>
+            </button>
+            <button @click="goToTasksFiltered('upcoming')" class="rounded-lg p-2.5 hover:bg-amber-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.taskUpcomingCount" class="text-2xl font-bold text-amber-600">{{ dashboard.taskUpcomingCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">กำลังจะ<br>เกิดขึ้น</p>
+            </button>
+            <button @click="goToTasksFiltered('done')" class="rounded-lg p-2.5 hover:bg-emerald-50 transition-colors">
+              <Transition name="number" mode="out-in"><p :key="dashboard.taskCompletedCount" class="text-2xl font-bold text-emerald-600">{{ dashboard.taskCompletedCount ?? '-' }}</p></Transition>
+              <p class="text-[11px] text-slate-500 mt-1 leading-tight">เสร็จสิ้น</p>
+            </button>
+          </div>
+          <div class="border-t border-slate-100 mt-3 pt-2 space-y-1">
+            <button @click="goToTasksFiltered('overdue')" class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors text-sm" :class="dashboard.overdueTasksCount ? 'hover:bg-red-50' : 'hover:bg-slate-50'">
+              <span class="flex items-center gap-2" :class="dashboard.overdueTasksCount ? 'text-red-600' : 'text-slate-500'">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0" :class="dashboard.overdueTasksCount ? 'bg-red-500' : 'bg-slate-300'"></span>เลยกำหนดส่ง
+              </span>
+              <span class="font-semibold" :class="dashboard.overdueTasksCount ? 'text-red-600' : ''">{{ dashboard.overdueTasksCount ?? 0 }}</span>
+            </button>
+            <button @click="goToTasksFiltered('neardue')" class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-amber-50 transition-colors text-sm">
+              <span class="flex items-center gap-2 text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>ใกล้ครบกำหนด</span>
+              <span class="font-semibold">{{ dashboard.nearDueCount ?? 0 }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="currentPage === 'personnel'">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+          <h2 class="text-lg font-semibold" style="color:var(--navy)">ทำเนียบกำลังพล</h2>
+        </div>
+        <div class="flex gap-2 no-print">
+          <input v-model="personnelSearch" placeholder="ค้นหาชื่อ/สังกัด..." class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <div class="relative">
+            <button @click="toggleExportMenu('personnel')" class="export-toggle-btn px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50">ส่งออก</button>
+            <div v-if="exportMenuOpen==='personnel'" class="export-menu">
+              <button @click="exportPersonnelXlsx">Excel (.xlsx)</button>
+              <button @click="printPage">PDF (พิมพ์)</button>
+            </div>
+          </div>
+          <button @click="openAddPersonnel" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium">+ เพิ่มกำลังพล</button>
+        </div>
+      </div>
+
+      <div v-if="personnelStatusFilter" class="flex items-center gap-2 text-sm mb-3">
+        <span class="text-slate-500">กรองตามสถานะ:</span>
+        <span class="px-2 py-0.5 rounded-full text-xs" :class="statusBadgeClass(personnelStatusFilter)">{{ personnelStatusFilter }}</span>
+        <button @click="personnelStatusFilter=''" class="text-slate-400 hover:text-slate-600 text-xs underline">ล้างตัวกรอง</button>
+      </div>
+
+      <div class="card overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-left">
+            <tr>
+              <th class="px-4 py-2.5">ยศ ชื่อ สกุล</th>
+              <th class="px-4 py-2.5">ตำแหน่ง</th>
+              <th class="px-4 py-2.5">สังกัด</th>
+              <th class="px-4 py-2.5">สถานะ</th>
+            </tr>
+          </thead>
+          <TransitionGroup name="list" tag="tbody">
+            <tr v-for="p in filteredPersonnel" :key="p.PersonnelID" @click="openPersonnelDetail(p.PersonnelID)"
+                class="border-t border-slate-100 hover:bg-sky-50 cursor-pointer transition-colors">
+              <td class="px-4 py-2.5 font-medium">{{ p['ยศ'] }}{{ p['ชื่อ'] }} {{ p['สกุล'] }}</td>
+              <td class="px-4 py-2.5">{{ p['ตำแหน่ง'] }}</td>
+              <td class="px-4 py-2.5">{{ p['สังกัด'] }}</td>
+              <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded-full text-xs" :class="statusBadgeClass(p['สถานะ'])">{{ p['สถานะ'] }}</span></td>
+            </tr>
+            <tr v-if="!filteredPersonnel.length" key="__empty"><td colspan="4" class="px-4 py-6 text-center text-slate-400">ยังไม่มีรายชื่อในเงื่อนไขนี้</td></tr>
+          </TransitionGroup>
+        </table>
+      </div>
+    </section>
+
+    <section v-if="currentPage === 'courses'">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+          <h2 class="text-lg font-semibold" style="color:var(--navy)">การฝึก/หลักสูตร</h2>
+        </div>
+        <div class="flex gap-2 no-print">
+          <input v-model="courseSearch" placeholder="ค้นหาชื่อหลักสูตร/หน่วยจัดฝึก..." class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <div class="relative">
+            <button @click="toggleExportMenu('courses')" class="export-toggle-btn px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50">ส่งออก</button>
+            <div v-if="exportMenuOpen==='courses'" class="export-menu">
+              <button @click="exportCoursesXlsx">Excel (.xlsx)</button>
+              <button @click="printPage">PDF (พิมพ์)</button>
+            </div>
+          </div>
+          <button @click="showAddCourse = true" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium">+ เพิ่มการฝึก/หลักสูตร</button>
+        </div>
+      </div>
+
+      <div class="flex gap-2 mb-4 flex-wrap">
+        <button v-for="g in courseGroups" :key="g.key" @click="courseFilter = g.key"
+          class="px-3 py-1.5 rounded-lg text-sm border transition-colors"
+          :class="courseFilter === g.key ? 'btn-primary border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">{{ g.label }}</button>
+      </div>
+
+      <TransitionGroup name="list" tag="div" class="grid md:grid-cols-2 gap-4">
+        <button v-for="c in filteredCourses" :key="c.CourseID" @click="openCourseDetail(c.CourseID)"
+                class="card hover-lift p-4 text-left">
+          <div class="flex justify-between items-start mb-2">
+            <h3 class="font-medium">{{ courseLabel(c) }}</h3>
+            <span class="px-2 py-0.5 rounded-full text-xs shrink-0" :class="statusBadgeClass(c.computedStatus)">{{ c.computedStatus }}</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-1">ประเภท: {{ c['ประเภทหลักสูตร'] }}</p>
+          <p class="text-xs text-slate-500 mb-1">หน่วยจัดฝึก: {{ c['หน่วยจัดฝึก'] }}</p>
+          <p class="text-xs text-slate-400">{{ c['วันเริ่ม'] }} — {{ c['วันสิ้นสุด'] }}</p>
+          <p class="text-xs mt-2" style="color:var(--navy)">ดูรายชื่อผู้เข้ารับการฝึก</p>
+        </button>
+        <p v-if="!filteredCourses.length" key="__empty" class="text-slate-400 text-sm">ยังไม่มีหลักสูตรในเงื่อนไขนี้</p>
+      </TransitionGroup>
+    </section>
+
+    <section v-if="currentPage === 'tasks'">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+          <h2 class="text-lg font-semibold" style="color:var(--navy)">งาน</h2>
+        </div>
+        <div class="flex gap-2 no-print">
+          <input v-model="taskSearch" placeholder="ค้นหาชื่องาน/ผู้รับผิดชอบ/หน่วยปลายทาง..." class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <div class="relative">
+            <button @click="toggleExportMenu('tasks')" class="export-toggle-btn px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50">ส่งออก</button>
+            <div v-if="exportMenuOpen==='tasks'" class="export-menu">
+              <button @click="exportTasksXlsx">Excel (.xlsx)</button>
+              <button @click="printPage">PDF (พิมพ์)</button>
+            </div>
+          </div>
+          <button v-if="isEditor" @click="openAddTask" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium">+ เพิ่มงาน</button>
+        </div>
+      </div>
+
+      <div class="flex gap-2 mb-4 flex-wrap">
+        <button v-for="g in taskGroups" :key="g.key" @click="taskFilter = g.key"
+          class="px-3 py-1.5 rounded-lg text-sm border transition-colors"
+          :class="taskFilter === g.key ? 'btn-primary border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">{{ g.label }}</button>
+      </div>
+
+      <TransitionGroup name="list" tag="div" class="space-y-4">
+        <div v-for="t in filteredTasks" :key="t.TaskID" :id="'task-' + t.TaskID" class="card p-4">
+          <div class="flex flex-wrap justify-between items-start gap-2 mb-3">
+            <div class="min-w-0 flex items-start gap-3">
+              <button @click="onToggleDone(t)" :title="isDone(t) ? 'เปิดงานอีกครั้ง' : 'ติ๊กว่าเสร็จ'"
+                class="shrink-0 w-6 h-6 mt-0.5 rounded-md border-2 flex items-center justify-center transition-colors"
+                :class="isDone(t) ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 hover:border-emerald-400'">
+                <Transition name="check">
+                  <svg v-if="isDone(t)" viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>
+                </Transition>
+              </button>
+              <div class="min-w-0">
+                <h3 class="font-medium flex flex-wrap items-center gap-2" :class="isDone(t) ? 'line-through text-slate-400' : ''">
+                  {{ t['ชื่องาน'] }}
+                  <span v-if="isDone(t)" class="px-2 py-0.5 rounded-full text-[11px] badge-done no-underline">เสร็จสิ้น</span>
+                  <span v-else-if="isOverdue(t)" class="px-2 py-0.5 rounded-full text-[11px] badge-late">เลยกำหนดส่ง</span>
+                  <span v-else-if="isNearDue(t)" class="px-2 py-0.5 rounded-full text-[11px] badge-upcoming">ใกล้ครบกำหนด</span>
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  ผู้รับผิดชอบ: {{ t['ผู้รับผิดชอบ'] || '-' }} · ส่ง: {{ t['หน่วยปลายทาง'] || '-' }} · กำหนดส่ง {{ t['วันกำหนดส่ง'] || '-' }}
+                  <span v-if="t.subtasks.length"> · งานย่อย {{ t.subtasks.length }} รายการ</span>
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0 no-print">
+              <button v-if="isEditor" @click="openEditTask(t)" class="text-sm font-medium px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors" style="color:var(--navy)">แก้ไขงาน</button>
+              <button @click="t._expanded = !t._expanded" class="text-sm font-medium px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors" style="color:var(--navy)">{{ t._expanded ? 'ย่อ' : 'รายละเอียด' }}</button>
+            </div>
+          </div>
+
+          <div class="mb-1 flex justify-between text-xs">
+            <span class="text-slate-500">{{ t.subtasks.length ? 'ความคืบหน้ารวม (เฉลี่ยจากงานย่อยทั้งหมด)' : 'ความคืบหน้า' }}</span>
+            <span class="font-bold text-emerald-600">{{ taskOverall(t) }}%</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-3.5 overflow-hidden">
+            <div class="exp-bar h-3.5 rounded-full" :style="{width: taskOverall(t) + '%'}"></div>
+          </div>
+
+          <Transition name="reveal">
+            <div v-if="t._expanded" class="border-t border-slate-100 pt-3 mt-3 space-y-2">
+
+              <template v-if="t.subtasks.length">
+                <p class="text-xs text-slate-400">ติ๊กงานย่อยที่ทำเสร็จแล้ว แถบความคืบหน้าด้านบนคำนวณเป็น % จากจำนวนงานย่อยที่เสร็จให้อัตโนมัติ</p>
+                <div v-for="s in t.subtasks" :key="s.TaskID" class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg p-2">
+                  <button @click="onToggleSubtaskDone(s)" :title="s['สถานะ']==='เสร็จสิ้น' ? 'เอาติ๊กออก' : 'ติ๊กว่าเสร็จ'"
+                    class="shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors"
+                    :class="s['สถานะ']==='เสร็จสิ้น' ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 hover:border-emerald-400'">
+                    <Transition name="check">
+                      <svg v-if="s['สถานะ']==='เสร็จสิ้น'" viewBox="0 0 24 24" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>
+                    </Transition>
+                  </button>
+                  <span class="flex-1 truncate" :class="s['สถานะ']==='เสร็จสิ้น' ? 'line-through text-slate-400' : ''" :title="s['ชื่องาน']">{{ s['ชื่องาน'] }}</span>
+                  <span class="text-xs text-slate-400 w-28 shrink-0 text-right">ส่ง {{ s['วันกำหนดส่ง'] || '-' }}</span>
+                </div>
+              </template>
+
+              <p v-else class="text-xs text-slate-400 bg-slate-50 rounded-lg p-2">งานนี้ไม่มีงานย่อย ใช้เช็คบ็อกซ์ที่หัวการ์ดด้านบนเพื่อทำเครื่องหมายว่าเสร็จ</p>
+
+              <div v-if="!isDone(t)" class="pt-2">
+                <input v-model="t._link" placeholder="แนบลิงก์เอกสาร/หลักฐาน (จำเป็นก่อนติ๊กว่าเสร็จ)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <p class="text-[11px] text-slate-400 mt-1">
+                  {{ t.subtasks.length ? 'ต้องติ๊กงานย่อยให้ครบทุกรายการและแนบลิงก์ก่อน' : 'ต้องแนบลิงก์ก่อน' }} จึงจะติ๊กเช็คบ็อกซ์ด้านบนให้เป็นเสร็จสิ้นได้
+                </p>
+              </div>
+              <p v-else class="text-xs text-slate-500">หลักฐาน: <a :href="t['ลิงก์']" target="_blank" rel="noopener" class="text-sky-600 underline break-all">{{ t['ลิงก์'] }}</a></p>
+
+            </div>
+          </Transition>
+        </div>
+        <p v-if="!filteredTasks.length" key="__empty" class="text-slate-400 text-sm">ยังไม่มีงานในเงื่อนไขนี้</p>
+      </TransitionGroup>
+    </section>
+
+    <section v-if="currentPage === 'calendar'">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+          <h2 class="text-lg font-semibold" style="color:var(--navy)">ปฏิทินรวม</h2>
+        </div>
+        <div class="flex gap-2 items-center flex-wrap no-print">
+          <div class="flex gap-1 bg-white border border-slate-200 p-1 rounded-lg">
+            <button v-for="v in ['week','month','year']" :key="v" @click="calView = v"
+              class="px-3 py-1 rounded-md text-sm transition-colors" :class="calView===v ? 'btn-primary' : 'text-slate-600 hover:bg-slate-50'">
+              {{ v==='week' ? 'รายสัปดาห์' : v==='month' ? 'รายเดือน' : 'รายปี' }}
+            </button>
+          </div>
+          <div v-if="calView==='year'" class="flex gap-1 bg-white border border-slate-200 p-1 rounded-lg">
+            <button v-for="yt in ['calendar','fiscal']" :key="yt" @click="yearType = yt"
+              class="px-3 py-1 rounded-md text-sm transition-colors" :class="yearType===yt ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-50'">
+              {{ yt==='calendar' ? 'ปี พ.ศ.' : 'ปีงบประมาณ' }}
+            </button>
+          </div>
+          <div class="relative">
+            <button @click="toggleExportMenu('calendar')" class="export-toggle-btn px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50">ส่งออก</button>
+            <div v-if="exportMenuOpen==='calendar'" class="export-menu">
+              <button @click="exportCalendarImage" :disabled="imageExportBusy">รูปภาพ (.png)</button>
+              <button v-if="calView==='year'" @click="exportCalendarYearXlsx">Excel (.xlsx)</button>
+              <button @click="printPage">PDF (พิมพ์)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="flex justify-between items-center mb-4 gap-2">
+          <button @click="shiftCalendar(-1)" class="px-3 py-1 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 transition-colors shrink-0 no-print">ก่อนหน้า</button>
+          <select v-if="calView==='year'" v-model.number="calendarYearBE" class="font-medium text-center border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">
+            <option v-for="y in calendarYearOptionsBE" :key="y" :value="y">{{ yearType==='calendar' ? 'ปี พ.ศ. ' + y : 'ปีงบประมาณ ' + y }}</option>
+          </select>
+          <h3 v-else class="font-medium text-center">{{ calendarTitle }}</h3>
+          <button @click="shiftCalendar(1)" class="px-3 py-1 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 transition-colors shrink-0 no-print">ถัดไป</button>
+        </div>
+
+        <div v-if="calView==='month'" ref="monthGridEl" class="grid grid-cols-7 gap-1 text-xs">
+          <div v-for="d in ['อา','จ','อ','พ','พฤ','ศ','ส']" :key="d" class="text-center font-medium text-slate-400 pb-1">{{ d }}</div>
+          <div v-for="(day, idx) in monthGrid" :key="idx" class="min-h-[80px] border border-slate-100 rounded-lg p-1"
+               :class="[day.inMonth ? 'bg-white' : 'bg-slate-50 text-slate-300', day.isToday ? 'ring-2 ring-amber-300' : '']">
+            <p class="text-right">{{ day.date.getDate() }}</p>
+            <div v-for="e in day.events" :key="e.id" class="truncate rounded px-1 mb-0.5" :style="eventStyle(e)" :class="[eventPillClass(e.type), e.type==='course' ? 'cursor-pointer' : '']" @click="e.type==='course' && openCourseDetail(e.id)">{{ eventLabel(e) }}</div>
+          </div>
+        </div>
+
+        <div v-if="calView==='week'" ref="weekGridEl" class="grid grid-cols-1 md:grid-cols-7 gap-2 text-sm">
+          <div v-for="(day, idx) in weekGrid" :key="idx" class="border border-slate-100 rounded-lg p-2 min-h-[110px]" :class="day.isToday ? 'ring-2 ring-amber-300' : ''">
+            <p class="font-medium mb-1">{{ ['อา','จ','อ','พ','พฤ','ศ','ส'][day.date.getDay()] }} {{ day.date.getDate() }}/{{ day.date.getMonth()+1 }}</p>
+            <div v-for="e in day.events" :key="e.id" class="truncate rounded px-1 mb-0.5 text-xs" :style="eventStyle(e)" :class="[eventPillClass(e.type), e.type==='course' ? 'cursor-pointer' : '']" @click="e.type==='course' && openCourseDetail(e.id)">{{ eventLabel(e) }}</div>
+            <p v-if="!day.events.length" class="text-slate-300 text-xs">-</p>
+          </div>
+        </div>
+
+        <div v-if="calView==='year'" ref="yearViewEl" class="space-y-10">
+
+          <div>
+            <h4 class="font-semibold text-sm mb-3 flex items-center gap-2" style="color:var(--navy)">
+              <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[11px] font-bold" style="background:var(--navy)">1</span>
+              ภาพรวมทั้งหมด
+            </h4>
+            <div class="flex items-center gap-4 text-xs text-slate-500 mb-2">
+              <span class="flex items-center gap-1.5 font-medium" style="color:var(--navy)"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:var(--navy)"></span>หลักสูตร/การฝึก</span>
+              <span class="flex items-center gap-1.5 font-medium" style="color:#92400E"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:#C9A24B"></span>การปฏิบัติงาน</span>
+            </div>
+            <div class="border border-slate-100 rounded-lg overflow-x-auto year-scroll-box">
+              <div class="min-w-[720px]">
+                <div class="flex bg-slate-50 text-[11px] text-slate-500 border-b border-slate-100">
+                  <div class="w-44 shrink-0 px-2 py-1.5 font-medium">รายการ</div>
+                  <div class="flex-1 flex">
+                    <div v-for="mo in yearWindow.months" :key="mo.shortLabel" class="px-1 py-1.5 text-center border-l border-slate-100 first:border-l-0" :style="{flexBasis: (mo.days/yearWindow.totalDays*100)+'%'}">{{ mo.shortLabel }}</div>
+                  </div>
+                </div>
+                <div v-for="row in overviewRows" :key="row.key" class="flex items-center border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                  <div class="w-44 shrink-0 px-2 py-2 text-xs font-medium break-words"
+                       :style="{color: (row.instances[0] && row.instances[0].kind === 'task') ? '#92400E' : 'var(--navy)'}"
+                       :title="row.name">{{ row.name }}
+                    <div v-if="row.instances[0].kind==='course'" class="mt-1 space-y-0.5 font-normal text-[10px] text-slate-500">
+                      <div v-for="inst in row.instances" :key="inst.id"><span class="inline-block w-2 h-2 rounded-full mr-1" :style="{background:inst.color}"></span>{{ inst.batch ? 'รุ่น '+inst.batch : 'ไม่ระบุรุ่น' }} · {{ inst.status }}</div>
+                    </div>
+                  </div>
+                  <div class="flex-1 relative my-1" :style="{height:row.height+'px'}">
+                    <div v-for="(inst, idx) in row.instances" :key="idx" class="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity text-white text-[10px] overflow-hidden px-1"
+                         :style="{ left: inst.bar.left+'%', width: inst.bar.width+'%', background: inst.color, top:(inst.lane*26)+'px', height:'22px' }"
+                         :title="inst.title" @click="inst.onClick && inst.onClick()">{{ inst.label }}</div>
+                  </div>
+                </div>
+                <p v-if="!overviewRows.length" class="text-xs text-slate-400 text-center py-3">ไม่มีข้อมูลในช่วงปีนี้</p>
+              </div>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">ชื่อสีน้ำเงิน = หลักสูตร/การฝึก · ชื่อสีน้ำตาลทอง = การปฏิบัติงาน · แท่งหลักสูตร: แต่ละสี = รุ่นที่ต่างกัน · แท่งงาน: เขียว=เสร็จสิ้น แดง=เลยกำหนด ทอง=กำลังดำเนินการ</p>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-sm mb-3 flex items-center gap-2" style="color:var(--navy)">
+              <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[11px] font-bold" style="background:var(--navy)">2</span>
+              แยกตามหมวดหมู่
+            </h4>
+            <div v-for="box in categoryGroups" :key="box.key" class="mb-5 last:mb-0">
+              <p class="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full inline-block shrink-0" :style="{background: box.accent}"></span>{{ box.label }}
+              </p>
+              <div class="border border-slate-100 rounded-lg overflow-x-auto year-scroll-box">
+                <div class="min-w-[720px]">
+                  <div class="flex text-[11px] text-slate-500 border-b" :style="{background: box.accent + '14', borderColor: box.accent + '33'}">
+                    <div class="w-44 shrink-0 px-2 py-1.5 font-medium">{{ box.label }}</div>
+                    <div class="flex-1 flex">
+                      <div v-for="mo in yearWindow.months" :key="mo.shortLabel" class="px-1 py-1.5 text-center border-l first:border-l-0" :style="{flexBasis: (mo.days/yearWindow.totalDays*100)+'%', borderColor: box.accent + '33'}">{{ mo.shortLabel }}</div>
+                    </div>
+                  </div>
+                  <div v-for="row in box.rows" :key="row.key" class="flex items-center border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                    <div class="w-44 shrink-0 px-2 py-2 text-xs break-words" :title="row.name">{{ row.name }}
+                    <div v-if="row.instances[0].kind==='course'" class="mt-1 space-y-0.5 font-normal text-[10px] text-slate-500">
+                      <div v-for="inst in row.instances" :key="inst.id"><span class="inline-block w-2 h-2 rounded-full mr-1" :style="{background:inst.color}"></span>{{ inst.batch ? 'รุ่น '+inst.batch : 'ไม่ระบุรุ่น' }} · {{ inst.status }}</div>
+                    </div>
+                  </div>
+                    <div class="flex-1 relative my-1" :style="{height:row.height+'px'}">
+                      <div v-for="(inst, idx) in row.instances" :key="idx" class="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity text-white text-[10px] overflow-hidden px-1"
+                           :style="{ left: inst.bar.left+'%', width: inst.bar.width+'%', background: inst.color, top:(inst.lane*26)+'px', height:'22px' }"
+                           :title="inst.title" @click="inst.onClick && inst.onClick()">{{ inst.label }}</div>
+                    </div>
+                  </div>
+                  <p v-if="!box.rows.length" class="text-xs text-slate-400 text-center py-3">ไม่มีข้อมูลในหมวดนี้ช่วงปีนี้</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="flex gap-4 mt-4 text-xs text-slate-500 flex-wrap" v-if="calView!=='year'">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block" style="background:#1D4ED8"></span> หลักสูตร</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block" style="background:var(--gold)"></span> งาน/งานย่อย</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full inline-block bg-emerald-400"></span> เสร็จสิ้นแล้ว</span>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="currentPage === 'history'">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-5">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-6 rounded" style="background:var(--navy)"></span>
+          <h2 class="text-lg font-semibold" style="color:var(--navy)">ประวัติการดำเนินการ</h2>
+        </div>
+        <div class="relative no-print">
+          <button @click="toggleExportMenu('history')" class="export-toggle-btn px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50">ส่งออก</button>
+          <div v-if="exportMenuOpen==='history'" class="export-menu">
+            <button @click="exportActivityLogXlsx">Excel (.xlsx)</button>
+            <button @click="printPage">PDF (พิมพ์)</button>
+          </div>
+        </div>
+      </div>
+      <div class="card p-5">
+        <div v-for="log in activityLog" :key="log.logId" class="flex gap-3 py-3 border-b border-slate-100 last:border-0">
+          <div class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" :style="{background: activityColor(log.actionType)}"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap justify-between items-baseline gap-x-2">
+              <span class="text-sm font-medium">{{ log.actionType }}</span>
+              <span class="text-xs text-slate-400 shrink-0">{{ log.timestamp }}</span>
+            </div>
+            <p class="text-sm text-slate-600 break-words">{{ log.description }}</p>
+            <p class="text-xs text-slate-500 mt-1">ผู้ทำ: {{ log.actorFullName }}<span v-if="log.actorUsername"> · ชื่อผู้ใช้: {{ log.actorUsername }}</span><span v-if="log.actorRole"> · {{ log.actorRole }}</span></p>
+          </div>
+        </div>
+        <p v-if="!activityLog.length" class="text-sm text-slate-400 text-center py-8">ยังไม่มีประวัติการดำเนินการ</p>
+      </div>
+    </section>
+
+    </div>
+    </Transition>
+    </main>
+
+    <nav class="md:hidden fixed bottom-0 inset-x-0 sidebar-bg flex justify-around py-1.5 z-30 border-t border-white/10">
+      <button v-for="p in pages" :key="p.id" @click="goTo(p.id)" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px]"
+        :class="currentPage===p.id ? 'text-white' : 'text-slate-400'">
+        <span class="w-5 h-5" :style="currentPage===p.id ? 'color:var(--gold)' : ''" v-html="p.icon"></span>{{ p.label }}
+      </button>
+    </nav>
+  </div>
+
+  <!-- แจ้งเตือนผลการทำงาน -->
+  <Transition name="toast">
+    <div v-if="toast.show" class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm shadow-lg max-w-[90vw]"
+         :class="toast.type==='err' ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'">
+      {{ toast.msg }}
+    </div>
+  </Transition>
+
+  <Transition name="modal-fade">
+  <div v-if="showAddPersonnel" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="showAddPersonnel=false">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-md max-h-[85vh] overflow-y-auto modal-panel">
+      <h3 class="font-semibold mb-4" style="color:var(--navy)">เพิ่มกำลังพล</h3>
+      <div class="space-y-2">
+        <select v-model="newPerson.rank" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>เลือกยศ...</option>
+          <option v-for="r in (initial.rankList || [])" :key="r" :value="r">{{ r }}</option>
+        </select>
+        <input v-model="newPerson.firstName" placeholder="ชื่อ" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <input v-model="newPerson.lastName" placeholder="สกุล" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <input v-model="newPerson.position" placeholder="ตำแหน่ง" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="newPerson.unit" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>เลือกสังกัด...</option>
+          <option v-for="u in (initial.units || [])" :key="u" :value="u">{{ u }}</option>
+        </select>
+        <input v-model="newPerson.photoUrl" placeholder="URL รูปภาพ (ถ้ามี)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="newPerson.status" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option v-for="s in (initial.personnelStatuses || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <p class="text-[11px] text-slate-400">สถานะการฝึกจะคำนวณอัตโนมัติตามหลักสูตรที่ลงทะเบียนภายหลัง ยกเว้นเลือก "ช่วยราชการ" จะค้างไว้ตามที่ตั้ง</p>
+      </div>
+      <p class="text-xs text-slate-400 mt-3">ข้อมูลเพิ่มเติม เช่น เลขบัตร ปชช., วันเกิด, บัญชีธนาคาร กรอกภายหลังได้จากหน้ารายละเอียด</p>
+      <div class="flex justify-end gap-2 mt-4">
+        <button @click="showAddPersonnel=false" class="px-4 py-2 text-sm rounded-lg border border-slate-200">ยกเลิก</button>
+        <button @click="submitAddPersonnel" :disabled="busy" class="btn-primary px-4 py-2 text-sm rounded-lg disabled:opacity-60">บันทึก</button>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  <Transition name="modal-fade">
+  <div v-if="selectedPersonnel" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="selectedPersonnel=null">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto modal-panel">
+      <div class="flex gap-4 mb-2">
+        <img :src="selectedPersonnel.person['รูปภาพ'] || placeholderImg" class="w-20 h-20 rounded-lg object-cover bg-slate-100 shrink-0">
+        <div class="flex-1 min-w-0">
+          <template v-if="!editingCore">
+            <h3 class="font-semibold text-lg">{{ selectedPersonnel.person['ยศ'] }}{{ selectedPersonnel.person['ชื่อ'] }} {{ selectedPersonnel.person['สกุล'] }}</h3>
+            <p class="text-sm text-slate-500">{{ selectedPersonnel.person['ตำแหน่ง'] }} · {{ selectedPersonnel.person['สังกัด'] }}</p>
+            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs" :class="statusBadgeClass(selectedPersonnel.person['สถานะ'])">{{ selectedPersonnel.person['สถานะ'] }}</span>
+          </template>
+          <div v-else class="space-y-2">
+            <div class="grid grid-cols-3 gap-2">
+              <select v-model="coreForm.rank" class="col-span-1 px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+                <option v-for="r in (initial.rankList || [])" :key="r" :value="r">{{ r }}</option>
+              </select>
+              <input v-model="coreForm.firstName" placeholder="ชื่อ" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+              <input v-model="coreForm.lastName" placeholder="สกุล" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+            </div>
+            <input v-model="coreForm.position" placeholder="ตำแหน่ง" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+            <select v-model="coreForm.unit" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+              <option value="" disabled>เลือกสังกัด...</option>
+              <option v-for="u in (initial.units || [])" :key="u" :value="u">{{ u }}</option>
+            </select>
+            <input v-model="coreForm.photoUrl" placeholder="URL รูปภาพ" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+            <select v-model="coreForm.status" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+              <option v-for="s in (initial.personnelStatuses || [])" :key="s" :value="s">{{ s }}</option>
+            </select>
+            <p class="text-[11px] text-slate-400">สถานะการฝึกคำนวณอัตโนมัติตามหลักสูตรที่ลงทะเบียน ยกเว้นเลือก "ช่วยราชการ"</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-3 mb-4 text-xs">
+        <button v-if="isEditor && !editingCore" @click="startEditCore" class="font-medium" style="color:var(--navy)">แก้ไขข้อมูลหลัก</button>
+        <template v-if="isEditor && editingCore">
+          <button @click="saveCore" class="btn-primary px-3 py-1 rounded-lg font-medium">บันทึก</button>
+          <button @click="editingCore=false" class="px-3 py-1 rounded-lg border border-slate-200">ยกเลิก</button>
+        </template>
+        <button v-if="isEditor && !editingCore" @click="deletePersonnelConfirm" class="font-medium text-red-600 ml-auto">ลบกำลังพลนี้</button>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-3 mb-4">
+        <div class="flex justify-between items-center mb-2">
+          <h4 class="font-medium text-sm">ข้อมูลส่วนตัว &amp; ราชการ</h4>
+          <button v-if="isEditor && !editingExtra" @click="startEditExtra" class="text-xs font-medium" style="color:var(--navy)">แก้ไข</button>
+        </div>
+
+        <div v-if="!editingExtra" class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+          <p><span class="text-slate-400">วันเกิด:</span> {{ selectedPersonnel.birthDate || '-' }}</p>
+          <p><span class="text-slate-400">อายุ:</span> {{ selectedPersonnel.age != null ? selectedPersonnel.age + ' ปี' : '-' }}</p>
+          <p><span class="text-slate-400">เลขบัตร ปชช.:</span> {{ selectedPersonnel.person['เลขประจำตัวประชาชน'] || '-' }}</p>
+          <p><span class="text-slate-400">เลขประจำตัวทหาร:</span> {{ selectedPersonnel.person['เลขประจำตัวทหาร'] || '-' }}</p>
+          <p><span class="text-slate-400">เบอร์โทรศัพท์:</span> {{ selectedPersonnel.person['เบอร์โทรศัพท์'] || '-' }}</p>
+          <p><span class="text-slate-400">อายุราชการ:</span> {{ selectedPersonnel.serviceDuration ? selectedPersonnel.serviceDuration.text : '-' }}</p>
+          <p class="col-span-2"><span class="text-slate-400">บัญชีธนาคาร:</span> {{ selectedPersonnel.person['ธนาคาร'] || '-' }} {{ selectedPersonnel.person['เลขที่บัญชี'] ? ('· ' + selectedPersonnel.person['เลขที่บัญชี']) : '' }}</p>
+        </div>
+
+        <div v-else class="space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="text-[11px] text-slate-500">วันเกิด</label><input type="date" v-model="extraForm.birthDate" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs"></div>
+            <div><label class="text-[11px] text-slate-500">เบอร์โทรศัพท์</label><input v-model="extraForm.phone" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs"></div>
+            <div><label class="text-[11px] text-slate-500">เลขบัตร ปชช.</label><input v-model="extraForm.nationalId" maxlength="13" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs"></div>
+            <div><label class="text-[11px] text-slate-500">เลขประจำตัวทหาร</label><input v-model="extraForm.militaryId" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs"></div>
+            <div><label class="text-[11px] text-slate-500">ธนาคาร</label>
+              <select v-model="extraForm.bank" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+                <option value="">ไม่ระบุ</option>
+                <option v-for="b in (initial.bankList || [])" :key="b" :value="b">{{ b }}</option>
+              </select>
+            </div>
+            <div><label class="text-[11px] text-slate-500">เลขที่บัญชี</label><input v-model="extraForm.accountNumber" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs"></div>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button @click="editingExtra=false" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200">ยกเลิก</button>
+            <button @click="saveExtra" class="btn-primary px-3 py-1.5 text-xs rounded-lg">บันทึก</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <h4 class="font-medium mb-2 text-sm">ประวัติการติดยศ <span v-if="isEditor" class="text-[11px] font-normal text-slate-400">(คลิกรายการเพื่อแก้ไข)</span></h4>
+        <div class="space-y-1 mb-2">
+          <template v-for="r in selectedPersonnel.rankHistory" :key="r.recordId">
+            <button v-if="isEditor && editingRankId !== r.recordId" @click="startEditRank(r)"
+              class="w-full flex justify-between items-center text-xs bg-slate-50 hover:bg-slate-100 rounded-lg px-3 py-1.5 transition-colors text-left">
+              <span class="font-medium">{{ r.rank }}</span><span class="text-slate-400">{{ r.date }}</span>
+            </button>
+            <div v-else-if="!isEditor" class="flex justify-between items-center text-xs bg-slate-50 rounded-lg px-3 py-1.5">
+              <span class="font-medium">{{ r.rank }}</span><span class="text-slate-400">{{ r.date }}</span>
+            </div>
+            <div v-else class="flex flex-wrap items-center gap-2 bg-amber-50 rounded-lg px-3 py-2">
+              <select v-model="rankEditForm.rank" class="flex-1 min-w-[90px] px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+                <option v-for="rk in (initial.rankList || [])" :key="rk" :value="rk">{{ rk }}</option>
+              </select>
+              <input type="date" v-model="rankEditForm.date" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+              <button @click="saveEditRank" class="btn-primary px-2.5 py-1 text-xs rounded-lg">บันทึก</button>
+              <button @click="cancelEditRank" class="px-2.5 py-1 text-xs rounded-lg border border-slate-200">ยกเลิก</button>
+              <button @click="deleteRankConfirm(r)" class="text-xs text-red-600 font-medium ml-auto">ลบ</button>
+            </div>
+          </template>
+          <p v-if="!selectedPersonnel.rankHistory.length" class="text-xs text-slate-400">ยังไม่มีประวัติการติดยศ</p>
+        </div>
+        <div v-if="isEditor" class="flex gap-2">
+          <select v-model="newRank.rank" class="flex-1 px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+            <option value="" disabled>เลือกยศ...</option>
+            <option v-for="r in (initial.rankList || [])" :key="r" :value="r">{{ r }}</option>
+          </select>
+          <input type="date" v-model="newRank.date" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+          <button @click="submitAddRank" class="btn-primary px-3 py-1.5 text-xs rounded-lg">เพิ่ม</button>
+        </div>
+      </div>
+
+      <h4 class="font-medium mb-2 text-sm">ประวัติการฝึกอบรม</h4>
+      <div class="space-y-2 mb-4">
+        <div v-for="h in selectedPersonnel.history" :key="h.recordId" class="flex justify-between items-center p-2 rounded-lg" :class="statusRowClass(h.status)">
+          <div>
+            <p class="text-sm font-medium">{{ h.courseName }}{{ h.batch ? ' รุ่น ' + h.batch : '' }}</p>
+            <p class="text-xs text-slate-500">{{ h.startDate }} — {{ h.endDate }}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-xs" :class="statusBadgeClass(h.status)">{{ h.status }}</span>
+        </div>
+        <p v-if="!selectedPersonnel.history.length" class="text-sm text-slate-400">ยังไม่มีประวัติการฝึก</p>
+      </div>
+
+      <template v-if="isEditor">
+        <h4 class="font-medium mb-2 text-sm">เพิ่มการฝึก/หลักสูตรให้บุคคลนี้</h4>
+        <div class="flex gap-2">
+          <select v-model="addCourseToPersonId" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+            <option value="" disabled>เลือกหลักสูตร/รุ่น...</option>
+            <option v-for="c in availableCoursesForPerson" :key="c.CourseID" :value="c.CourseID">{{ courseLabel(c) }} ({{ c['วันเริ่ม'] }})</option>
+          </select>
+          <button @click="submitAddCourseToPerson" :disabled="!availableCoursesForPerson.length" class="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed">เพิ่ม</button>
+        </div>
+        <p v-if="!availableCoursesForPerson.length" class="text-xs text-slate-400 mt-1">ลงทะเบียนครบทุกหลักสูตร/รุ่นที่มีอยู่แล้ว</p>
+      </template>
+
+      <div class="text-right mt-4">
+        <button @click="selectedPersonnel=null" class="px-4 py-2 text-sm rounded-lg border border-slate-200">ปิด</button>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  <Transition name="modal-fade">
+  <div v-if="selectedCourse" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="selectedCourse=null">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto modal-panel">
+      <template v-if="!editingCourseDetail">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <h3 class="font-semibold text-lg">{{ courseLabel(selectedCourse.course) }}</h3>
+            <p class="text-xs text-slate-500">{{ selectedCourse.course['ประเภทหลักสูตร'] }} · {{ selectedCourse.course['หน่วยจัดฝึก'] }}</p>
+            <p class="text-xs text-slate-400">{{ selectedCourse.course['วันเริ่ม'] }} — {{ selectedCourse.course['วันสิ้นสุด'] }}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-xs shrink-0" :class="statusBadgeClass(selectedCourse.course.computedStatus)">{{ selectedCourse.course.computedStatus }}</span>
+        </div>
+        <button v-if="isEditor" @click="startEditCourseDetail" class="text-xs font-medium mb-3" style="color:var(--navy)">แก้ไขหลักสูตร</button>
+      </template>
+      <div v-else class="space-y-2 mb-4">
+        <input v-model="courseEditForm.name" placeholder="ชื่อการฝึก" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <input v-model="courseEditForm.batch" placeholder="รุ่น (ไม่บังคับ) เช่น 1/2569" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="courseEditForm.type" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option v-for="t in (initial.courseTypes || [])" :key="t" :value="t">{{ t }}</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" v-model="courseEditForm.startDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <input type="date" v-model="courseEditForm.endDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        </div>
+        <input v-model="courseEditForm.unit" placeholder="หน่วยจัดฝึก" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <div class="flex justify-end gap-2">
+          <button @click="editingCourseDetail=false" class="px-3 py-1.5 text-xs rounded-lg border border-slate-200">ยกเลิก</button>
+          <button @click="saveCourseDetail" class="btn-primary px-3 py-1.5 text-xs rounded-lg">บันทึก</button>
+        </div>
+      </div>
+
+      <h4 class="font-medium text-sm mb-2">กำลังพลที่เข้ารับการฝึก ({{ selectedCourse.trainees.length }} นาย)</h4>
+      <div class="space-y-1">
+        <button v-for="tr in selectedCourse.trainees" :key="tr.personnelId" @click="goToPersonFromCourse(tr.personnelId)"
+          class="w-full text-left flex justify-between items-center p-2 rounded-lg hover:bg-sky-50 text-sm transition-colors">
+          <span class="underline" style="color:var(--navy)">{{ tr.rank }}{{ tr.firstName }} {{ tr.lastName }}</span>
+          <span class="text-slate-400 text-xs">{{ tr.position }} · {{ tr.unit }}</span>
+        </button>
+        <p v-if="!selectedCourse.trainees.length" class="text-sm text-slate-400">ยังไม่มีกำลังพลเข้ารับการฝึก</p>
+      </div>
+
+      <div v-if="isEditor" class="mt-4 pt-4 border-t border-slate-100">
+        <button @click="toggleAssignTrainees" class="text-sm font-medium" style="color:var(--navy)">
+          {{ showAssignTrainees ? 'ปิดรายชื่อกำลังพล' : '+ เพิ่มกำลังพลเข้าฝึก' }}
+        </button>
+        <Transition name="reveal">
+          <div v-if="showAssignTrainees" class="space-y-2 mt-2">
+            <input v-model="assignSearch" placeholder="ค้นหาชื่อ/สังกัด..." class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+            <div class="max-h-48 overflow-y-auto space-y-1 border border-slate-100 rounded-lg p-2">
+              <label v-for="p in availableForAssign" :key="p.PersonnelID" class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 text-sm cursor-pointer">
+                <input type="checkbox" class="accent-emerald-600 w-4 h-4 shrink-0" :checked="assignSelected.has(p.PersonnelID)" @change="toggleAssignPerson(p.PersonnelID)">
+                <span class="truncate">{{ p['ยศ'] }}{{ p['ชื่อ'] }} {{ p['สกุล'] }}</span>
+                <span class="text-slate-400 text-xs ml-auto shrink-0">{{ p['สังกัด'] }}</span>
+              </label>
+              <p v-if="!availableForAssign.length" class="text-xs text-slate-400 text-center py-2">
+                {{ (personnel || []).length ? 'ไม่พบกำลังพลที่ยังไม่ได้เพิ่ม (ทุกคนอยู่ในหลักสูตรนี้แล้ว หรือค้นหาไม่พบ)' : 'ยังไม่มีข้อมูลกำลังพลในระบบ' }}
+              </p>
+            </div>
+            <button @click="submitAssignTrainees" :disabled="!assignSelected.size || busy"
+              class="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              เพิ่มที่เลือก ({{ assignSelected.size }})
+            </button>
+          </div>
+        </Transition>
+      </div>
+
+      <div class="flex justify-between items-center mt-4">
+        <button v-if="isEditor" @click="deleteCourseConfirm" class="text-sm font-medium text-red-600">ลบหลักสูตรนี้</button>
+        <button @click="selectedCourse=null" class="px-4 py-2 text-sm rounded-lg border border-slate-200 ml-auto">ปิด</button>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  <Transition name="modal-fade">
+  <div v-if="showAddCourse" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="showAddCourse=false">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-md modal-panel">
+      <h3 class="font-semibold mb-4" style="color:var(--navy)">เพิ่มการฝึก/หลักสูตร</h3>
+      <div class="space-y-2">
+        <input v-model="newCourse.name" placeholder="ชื่อการฝึก" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <input v-model="newCourse.batch" placeholder="รุ่น (ไม่บังคับ) เช่น 1/2569" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="newCourse.type" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ประเภทหลักสูตร...</option>
+          <option v-for="t in (initial.courseTypes || [])" :key="t" :value="t">{{ t }}</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="text-xs text-slate-500">วันเริ่ม</label><input type="date" v-model="newCourse.startDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-slate-500">วันสิ้นสุด</label><input type="date" v-model="newCourse.endDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        </div>
+        <input v-model="newCourse.unit" placeholder="หน่วยจัดฝึก" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button @click="showAddCourse=false" class="px-4 py-2 text-sm rounded-lg border border-slate-200">ยกเลิก</button>
+        <button @click="submitAddCourse" :disabled="busy" class="btn-primary px-4 py-2 text-sm rounded-lg disabled:opacity-60">บันทึก</button>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  <Transition name="modal-fade">
+  <div v-if="showAddTask" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="showAddTask=false">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto modal-panel">
+      <h3 class="font-semibold mb-4" style="color:var(--navy)">เพิ่มงาน</h3>
+      <p class="text-xs text-slate-500 mb-1">งานหลัก</p>
+      <div class="space-y-2 mb-4">
+        <input v-model="newTask.main.name" placeholder="ชื่องาน" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="newTask.main.assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ผู้รับผิดชอบ...</option>
+          <option v-for="s in (initial.staffList || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="text-xs text-slate-500">วันที่สั่งการ</label><input type="date" v-model="newTask.main.orderDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-slate-500">กำหนดส่ง</label><input type="date" v-model="newTask.main.dueDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        </div>
+        <input v-model="newTask.main.destinationUnit" placeholder="หน่วยปลายทาง (พิมพ์ชื่อหน่วย)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+      </div>
+
+      <div class="flex justify-between items-center mb-2">
+        <p class="text-xs text-slate-500">งานย่อย (ถ้ามี ระบบจะคิดความคืบหน้างานหลักจากงานย่อยให้)</p>
+        <button @click="addSubtaskRow" class="text-xs font-medium whitespace-nowrap" style="color:var(--navy)">+ เพิ่มงานย่อย</button>
+      </div>
+      <div v-for="(st, i) in newTask.subtasks" :key="i" class="border border-slate-100 rounded-lg p-3 mb-2 space-y-2 relative">
+        <button @click="newTask.subtasks.splice(i,1)" class="absolute top-2 right-2 text-slate-300 hover:text-red-500 text-xs">ลบ</button>
+        <input v-model="st.name" placeholder="ชื่องานย่อย" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" v-model="st.orderDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <input type="date" v-model="st.dueDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        </div>
+        <input v-model="st.destinationUnit" placeholder="หน่วยปลายทาง" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="st.assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ผู้รับผิดชอบ...</option>
+          <option v-for="s in (initial.staffList || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button @click="showAddTask=false" class="px-4 py-2 text-sm rounded-lg border border-slate-200">ยกเลิก</button>
+        <button @click="submitAddTask" :disabled="busy" class="btn-primary px-4 py-2 text-sm rounded-lg disabled:opacity-60">บันทึก</button>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  <!-- แก้ไขงานหลัก + งานย่อย -->
+  <Transition name="modal-fade">
+  <div v-if="showEditTask" class="fixed inset-0 modal-backdrop flex items-center justify-center z-40 p-4" @click.self="showEditTask=false">
+    <div class="bg-white rounded-2xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto modal-panel">
+      <h3 class="font-semibold mb-4" style="color:var(--navy)">แก้ไขงาน</h3>
+
+      <p class="text-xs text-slate-500 mb-1">งานหลัก</p>
+      <div class="space-y-2 mb-4">
+        <input v-model="editForm.main.name" placeholder="ชื่องาน" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="editForm.main.assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ผู้รับผิดชอบ...</option>
+          <option v-for="s in (initial.staffList || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="text-xs text-slate-500">วันที่สั่งการ</label><input type="date" v-model="editForm.main.orderDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-slate-500">กำหนดส่ง</label><input type="date" v-model="editForm.main.dueDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+        </div>
+        <input v-model="editForm.main.destinationUnit" placeholder="หน่วยปลายทาง" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+      </div>
+
+      <div class="flex justify-between items-center mb-2">
+        <p class="text-xs text-slate-500">งานย่อยที่มีอยู่</p>
+      </div>
+      <div v-for="(st, i) in editForm.subtasks" :key="st.taskId" class="border border-slate-100 rounded-lg p-3 mb-2 space-y-2 relative">
+        <button @click="removeExistingSubtask(i)" class="absolute top-2 right-2 text-slate-300 hover:text-red-500 text-xs">ลบงานย่อย</button>
+        <input v-model="st.name" placeholder="ชื่องานย่อย" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" v-model="st.orderDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <input type="date" v-model="st.dueDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        </div>
+        <input v-model="st.destinationUnit" placeholder="หน่วยปลายทาง" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="st.assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ผู้รับผิดชอบ...</option>
+          <option v-for="s in (initial.staffList || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <p class="text-[11px] text-slate-400">สถานะปัจจุบัน: {{ st.done ? 'เสร็จสิ้น' : 'กำลังดำเนินการ' }} (ติ๊ก/เอาติ๊กออกได้จากการ์ดงานในหน้ารายการ)</p>
+      </div>
+      <p v-if="!editForm.subtasks.length" class="text-xs text-slate-400 mb-2">ยังไม่มีงานย่อย</p>
+
+      <div class="flex justify-between items-center mb-2 mt-3">
+        <p class="text-xs text-slate-500">งานย่อยที่จะเพิ่มใหม่</p>
+        <button @click="addEditSubtaskRow" class="text-xs font-medium whitespace-nowrap" style="color:var(--navy)">+ เพิ่มงานย่อย</button>
+      </div>
+      <div v-for="(st, i) in editForm.newSubtasks" :key="'new'+i" class="border border-dashed border-slate-200 rounded-lg p-3 mb-2 space-y-2 relative bg-slate-50">
+        <button @click="editForm.newSubtasks.splice(i,1)" class="absolute top-2 right-2 text-slate-300 hover:text-red-500 text-xs">ลบ</button>
+        <input v-model="st.name" placeholder="ชื่องานย่อย" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" v-model="st.orderDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <input type="date" v-model="st.dueDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        </div>
+        <input v-model="st.destinationUnit" placeholder="หน่วยปลายทาง" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+        <select v-model="st.assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+          <option value="" disabled>ผู้รับผิดชอบ...</option>
+          <option v-for="s in (initial.staffList || [])" :key="s" :value="s">{{ s }}</option>
+        </select>
+      </div>
+
+      <div class="flex flex-wrap justify-between items-center gap-2 mt-5 pt-3 border-t border-slate-100">
+        <button @click="deleteTaskConfirm" class="text-sm font-medium text-red-600">ลบงานนี้ทั้งหมด</button>
+        <div class="flex gap-2 ml-auto">
+          <button @click="showEditTask=false" class="px-4 py-2 text-sm rounded-lg border border-slate-200">ยกเลิก</button>
+          <button @click="saveTaskEdits" :disabled="busy" class="btn-primary px-4 py-2 text-sm rounded-lg disabled:opacity-60">บันทึกการแก้ไข</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </Transition>
+
+  </div>
+  <!-- /แอปหลัก -->
+
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick } = Vue;
+
+const ICONS = {
+  dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  personnel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.5 2.7-6 5.5-6s5.5 2.5 5.5 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15 20c0-2.7 1.7-4.7 4-5"/></svg>',
+  courses: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5c0-1 .8-1.5 2-1.5h6v15H6c-1.2 0-2 .5-2 1.5V5.5Z"/><path d="M20 5.5c0-1-.8-1.5-2-1.5h-6v15h6c1.2 0 2 .5 2 1.5V5.5Z"/></svg>',
+  tasks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2H9z"/><path d="M8.5 13l2 2 4-4"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v3.5M16 3v3.5"/></svg>',
+  history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.3 2"/></svg>'
+};
+
+function isAppsScript() { return typeof google !== 'undefined' && google.script && google.script.run; }
+
+// เก็บ token เซสชันไว้เป็นตัวแปรนอก Vue (ให้ gsRun อ่านได้ตรงๆ แบบ sync)
+// ฝั่ง setup() จะ sync ค่านี้ให้ตรงกับ sessionToken (ref) ทุกครั้งที่ล็อกอิน/ล็อกเอาต์
+let CURRENT_TOKEN = '';
+const AUTH_FUNCTIONS = ['login', 'logout', 'checkSession']; // 3 ฟังก์ชันนี้ไม่ต้องแนบ token (login ยังไม่มี, อีก 2 ตัวรับ token เป็นอาร์กิวเมนต์ตรงๆ อยู่แล้ว)
+
+function gsRun(fnName, ...args) {
+  if (isAppsScript()) {
+    const callArgs = AUTH_FUNCTIONS.indexOf(fnName) > -1 ? args : [CURRENT_TOKEN || '', ...args];
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(e => reject(new Error((e && e.message) ? e.message : String(e))))
+        [fnName](...callArgs);
+    });
+  }
+  return Promise.reject(new Error('กรุณาเปิดระบบผ่านลิงก์เว็บแอปที่กำหนด'));
+}
+
+const BUILD_TAG = 'build 7.0-github';
+console.log('%c[ระบบกำลังพล] โหลดหน้าเว็บ ' + BUILD_TAG, 'color:#C9A24B;font-weight:bold');
+
+createApp({
+  setup() {
+    const buildTag = BUILD_TAG;
+    const mockMode = ref(!isAppsScript());
+    const initialLoading = ref(true);
+    const loadError = ref('');
+    const busyCount = ref(0);
+    const busy = computed(() => busyCount.value > 0);
+
+    const toast = reactive({ show:false, msg:'', type:'ok' });
+    let toastTimer = null;
+    function notify(msg, type) {
+      toast.msg = msg; toast.type = type || 'ok'; toast.show = true;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.show = false; }, 2800);
+    }
+
+    // ---- ระบบล็อกอิน/สิทธิ์ผู้ใช้งาน ----
+    // เก็บ token ไว้ใน sessionStorage (หายเมื่อปิดแท็บ) กันต้องพิมพ์ PIN ใหม่ทุกครั้งที่รีเฟรชหน้าเดิม
+    const SESSION_STORAGE_KEY = 'pmts_session_token';
+    const sessionToken = ref('');
+    const currentUser = ref(null); // {name, role} หรือ null ถ้ายังไม่ล็อกอิน
+    const loggedIn = computed(() => !!currentUser.value);
+    const isEditor = computed(() => !!currentUser.value && currentUser.value.role === 'ผู้แก้ไข');
+
+    function setSession(token, name, role) {
+      sessionToken.value = token;
+      CURRENT_TOKEN = token; // ให้ gsRun อ่านค่าล่าสุดได้แบบ sync
+      currentUser.value = { name: name, role: role };
+      try { sessionStorage.setItem(SESSION_STORAGE_KEY, token); } catch (e) {}
+    }
+    function clearSession() {
+      sessionToken.value = '';
+      CURRENT_TOKEN = '';
+      currentUser.value = null;
+      try { sessionStorage.removeItem(SESSION_STORAGE_KEY); } catch (e) {}
+    }
+
+    const loginForm = reactive({ name: '', pin: '' });
+    const loginError = ref('');
+    const loginBusy = ref(false);
+    async function submitLogin() {
+      if (!loginForm.name.trim() || !loginForm.pin.trim()) { loginError.value = 'กรุณากรอกชื่อและรหัสผ่านให้ครบ'; return; }
+      loginError.value = '';
+      loginBusy.value = true;
+      try {
+        const res = await gsRun('login', loginForm.name.trim(), loginForm.pin.trim());
+        setSession(res.token, res.name, res.role);
+        loginForm.pin = '';
+        await loadAll();
+      } catch (e) {
+        loginError.value = (e && e.message) ? e.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      } finally {
+        loginBusy.value = false;
+      }
+    }
+    async function doLogout() {
+      const tok = sessionToken.value;
+      clearSession();
+      initialLoading.value = true; // ให้หน้าจอ "กำลังโหลด" พร้อมเสมอถ้าล็อกอินใหม่
+      try { await gsRun('logout', tok); } catch (e) {}
+    }
+    // เรียกตอนเปิดหน้าเว็บ: เช็คว่ามี token ค้างจากแท็บเดิมและยังใช้ได้อยู่ไหม ก่อนตัดสินใจว่าจะโชว์หน้าล็อกอินหรือโหลดข้อมูลเลย
+    async function restoreSession() {
+      let saved = '';
+      try { saved = sessionStorage.getItem(SESSION_STORAGE_KEY) || ''; } catch (e) {}
+      if (!saved) { initialLoading.value = false; return; }
+      try {
+        const res = await gsRun('checkSession', saved);
+        if (res) {
+          setSession(res.token, res.name, res.role);
+          await loadAll();
+        } else {
+          try { sessionStorage.removeItem(SESSION_STORAGE_KEY); } catch (e) {}
+          initialLoading.value = false;
+        }
+      } catch (e) {
+        initialLoading.value = false;
+      }
+    }
+
+    // เรียก backend พร้อมสถานะกำลังทำงาน และแจ้งเตือนเมื่อพลาด
+    async function api(fnName, ...args) {
+      busyCount.value++;
+      try {
+        return await gsRun(fnName, ...args);
+      } catch (e) {
+        const msg = (e && e.message) ? e.message : 'เชื่อมต่อข้อมูลไม่สำเร็จ';
+        notify(msg, 'err');
+        // เซสชันหมดอายุ/ถูกล็อกเอาต์ระหว่างใช้งาน -> เด้งกลับไปหน้าล็อกอินอัตโนมัติ
+        if (msg.indexOf('เข้าสู่ระบบ') > -1 && msg.indexOf('เซสชัน') > -1) {
+          clearSession();
+        }
+        throw e;
+      } finally {
+        busyCount.value--;
+      }
+    }
+
+    // ---- ส่งออกไฟล์: Excel / รูปภาพ / พิมพ์เป็น PDF ----
+    // เมนูดรอปดาวน์ส่งออก ใช้ ref เดียวเก็บว่าเมนูของหน้าไหนเปิดอยู่ (ว่าง = ไม่มีเมนูเปิด)
+    const exportMenuOpen = ref('');
+    function toggleExportMenu(key) { exportMenuOpen.value = exportMenuOpen.value === key ? '' : key; }
+    function closeExportMenu() { exportMenuOpen.value = ''; }
+    function onDocumentClick(e) {
+      if (!exportMenuOpen.value) return;
+      if (e.target.closest('.export-menu') || e.target.closest('.export-toggle-btn')) return;
+      closeExportMenu();
+    }
+    onMounted(() => document.addEventListener('click', onDocumentClick));
+    onUnmounted(() => document.removeEventListener('click', onDocumentClick));
+
+    // แปลงวันที่ พ.ศ. สั้นๆ ไว้ตั้งชื่อไฟล์ เช่น 2569-09-20
+    function todayFileTag() {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return (d.getFullYear() + 543) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+    // กันชื่อไฟล์มีอักขระที่ห้ามใช้ในชื่อไฟล์ (เช่นจากคำค้นหาที่พิมพ์เอง)
+    function safeFileName(s) {
+      return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').trim().replace(/\s+/g, '_');
+    }
+
+    // ออก Excel จาก headers (แถวหัวตาราง) + rows (array ของ array ค่าตามลำดับ header)
+    function exportXlsx(filenameBase, headers, rows) {
+      if (typeof XLSX === 'undefined') { notify('โหลดไลบรารี Excel ไม่สำเร็จ ลองรีเฟรชหน้าแล้วลองใหม่', 'err'); return; }
+      try {
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        ws['!cols'] = headers.map(() => ({ wch: 18 }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูล');
+        XLSX.writeFile(wb, safeFileName(filenameBase) + '_' + todayFileTag() + '.xlsx');
+        notify('ดาวน์โหลดไฟล์ Excel แล้ว');
+      } catch (e) {
+        notify('ส่งออก Excel ไม่สำเร็จ: ' + (e && e.message ? e.message : e), 'err');
+      }
+      closeExportMenu();
+    }
+
+    // ถ่ายภาพองค์ประกอบบนหน้าจอ (รวมส่วนที่เลื่อนออกนอกจอ) แล้วดาวน์โหลดเป็น PNG
+    const imageExportBusy = ref(false);
+    async function exportImageFromEl(el, filenameBase) {
+      if (!el) { notify('ไม่พบเนื้อหาที่จะบันทึกเป็นภาพ', 'err'); return; }
+      if (typeof html2canvas === 'undefined') { notify('โหลดไลบรารีสร้างภาพไม่สำเร็จ ลองรีเฟรชหน้าแล้วลองใหม่', 'err'); return; }
+      imageExportBusy.value = true;
+      try {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          width: el.scrollWidth,
+          height: el.scrollHeight,
+          windowWidth: el.scrollWidth
+        });
+        const link = document.createElement('a');
+        link.download = safeFileName(filenameBase) + '_' + todayFileTag() + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        notify('ดาวน์โหลดไฟล์ภาพแล้ว');
+      } catch (e) {
+        notify('บันทึกภาพไม่สำเร็จ: ' + (e && e.message ? e.message : e), 'err');
+      } finally {
+        imageExportBusy.value = false;
+        closeExportMenu();
+      }
+    }
+
+    // พิมพ์/บันทึกเป็น PDF ผ่านกล่องโต้ตอบพิมพ์ของเบราว์เซอร์ (CSS @media print จัดการซ่อนส่วนที่ไม่ใช่เนื้อหาให้)
+    async function printPage() {
+      if(currentPage.value === 'calendar') return exportCalendarPdf();
+      if(['personnel','courses','tasks'].includes(currentPage.value)) return exportDetailed(currentPage.value, true);
+      closeExportMenu(); nextTick(()=>window.print());
+    }
+
+    const exportBusy = ref(false);
+    const personColumns = ['PersonnelID','ยศ','ชื่อ','สกุล','ตำแหน่ง','สังกัด','สถานะ','เบอร์โทรศัพท์','ธนาคาร','เลขที่บัญชี','เลขประจำตัวประชาชน','เลขประจำตัวทหาร','วันเกิด','รูปภาพ'];
+    const courseColumns = ['CourseID','ชื่อหลักสูตร','รุ่น','ประเภทหลักสูตร','หน่วยจัดฝึก','วันเริ่ม','วันสิ้นสุด','computedStatus'];
+    const taskColumns = ['TaskID','ParentTaskID','ชื่องาน','ผู้รับผิดชอบ','วันที่สั่งการ','วันกำหนดส่ง','หน่วยปลายทาง','ความคืบหน้า','สถานะ','ลิงก์','วันที่ปิดงาน'];
+    function columnLabel(key) { return ({PersonnelID:'รหัสกำลังพล',CourseID:'รหัสหลักสูตร',computedStatus:'สถานะ',TaskID:'รหัสงาน',ParentTaskID:'รหัสงานหลัก','รูปภาพ':'ลิงก์รูปภาพ'})[key] || key; }
+    function valuesOf(obj,columns) { return columns.map(key=>obj[key] ?? ''); }
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function htmlTable(headers,rows) {
+      return '<table><thead><tr>'+headers.map(h=>'<th>'+escapeHtml(h)+'</th>').join('')+'</tr></thead><tbody>'+
+        (rows.length ? rows.map(row=>'<tr>'+row.map(v=>'<td>'+escapeHtml(v)+'</td>').join('')+'</tr>').join('') : '<tr><td colspan="'+headers.length+'">ไม่มีข้อมูล</td></tr>')+'</tbody></table>';
+    }
+    function detailTable(obj,columns) { return htmlTable(['รายการ','รายละเอียด'],columns.map(k=>[columnLabel(k),obj[k] ?? ''])); }
+    function rankRows(d) { return (d.rankHistory||[]).map(h=>[h.recordId,h.rank,h.date]); }
+    function trainingRows(d) { return (d.history||[]).map(h=>[h.recordId,h.courseId,h.courseName,h.batch||'',h.courseType,h.unit||'',h.startDate,h.endDate,h.status]); }
+    const rankHeaders=['รหัสประวัติ','ยศ','วันที่ติดยศ'];
+    const trainingHeaders=['รหัสประวัติ','รหัสหลักสูตร','ชื่อหลักสูตร','รุ่น','ประเภท','หน่วยจัดฝึก','วันเริ่ม','วันสิ้นสุด','สถานะ'];
+    const traineeHeaders=['รหัสกำลังพล','ยศ','ชื่อ','สกุล','ตำแหน่ง','สังกัด'];
+    function traineeRows(d) { return (d.trainees||[]).map(p=>[p.personnelId,p.rank,p.firstName,p.lastName,p.position,p.unit]); }
+    function tasksRows(list) {
+      return list.flatMap(t=>[valuesOf({...t,'ความคืบหน้า':taskOverall(t)},taskColumns),...(t.subtasks||[]).map(s=>valuesOf({...s,'ความคืบหน้า':s['สถานะ']==='เสร็จสิ้น'?100:0},taskColumns))]);
+    }
+    function exportWorkbook(title,sheets) {
+      if(typeof XLSX==='undefined') throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ กรุณารีเฟรชแล้วลองใหม่');
+      const wb=XLSX.utils.book_new();
+      sheets.forEach(sheet=>{
+        // Strings remain text cells: retain leading zeroes and never interpret user input as formulas.
+        const ws=XLSX.utils.aoa_to_sheet([sheet.headers,...sheet.rows]);
+        ws['!cols']=sheet.headers.map(()=>({wch:23}));
+        if(ws['!ref']) ws['!autofilter']={ref:ws['!ref']};
+        XLSX.utils.book_append_sheet(wb,ws,sheet.name.slice(0,31));
+      });
+      XLSX.writeFile(wb,safeFileName(title)+'_'+todayFileTag()+'.xlsx');
+    }
+    async function exportDetailed(kind,pdf=false) {
+      if(exportBusy.value) return;
+      exportBusy.value=true; closeExportMenu();
+      try {
+        const people=kind==='personnel' ? filteredPersonnel.value.slice() : [];
+        const selectedCourses=kind==='courses' ? filteredCourses.value.slice() : kind==='calendar' ? courses.value.filter(c=>itemBar(c['วันเริ่ม'],c['วันสิ้นสุด'])).sort((a,b)=>statusPriority(a.computedStatus)-statusPriority(b.computedStatus)) : [];
+        const selectedTasks=kind==='tasks' ? filteredTasks.value.slice() : kind==='calendar' ? tasks.value.filter(t=>itemBar(t['วันที่สั่งการ'],t['วันกำหนดส่ง'])) : [];
+        const data=kind==='tasks' ? {personnel:[],courses:[]} : await api('getExportData',{personnelIds:people.map(p=>p.PersonnelID),courseIds:selectedCourses.map(c=>c.CourseID)});
+        const sheets=[], documents=[];
+        const title=({personnel:'รายละเอียดกำลังพล',courses:'รายละเอียดหลักสูตร',tasks:'รายละเอียดงาน',calendar:'ปฏิทิน_'+calendarTitle.value})[kind];
+        if(kind==='personnel') {
+          const main=[],ranks=[],training=[];
+          (data.personnel||[]).forEach(d=>{
+            const p=d.person, name=(p['ยศ']||'')+(p['ชื่อ']||'')+' '+(p['สกุล']||'');
+            main.push([...valuesOf(p,personColumns),d.age ?? '',d.serviceDuration ? d.serviceDuration.text : '']);
+            rankRows(d).forEach(row=>ranks.push([p.PersonnelID,name,...row]));
+            trainingRows(d).forEach(row=>training.push([p.PersonnelID,name,...row]));
+            documents.push('<article><h2>'+escapeHtml(name)+' — '+escapeHtml(p.PersonnelID)+'</h2>'+detailTable(p,personColumns)+
+              htmlTable(['อายุ (ปี)','อายุราชการ (จากวันที่ติดยศครั้งแรกที่บันทึก)'],[[d.age ?? '',d.serviceDuration ? d.serviceDuration.text : '']])+
+              '<h3>ประวัติยศ</h3>'+htmlTable(rankHeaders,rankRows(d))+'<h3>ประวัติการฝึก</h3>'+htmlTable(trainingHeaders,trainingRows(d))+'</article>');
+          });
+          sheets.push({name:'ข้อมูลกำลังพล',headers:[...personColumns.map(columnLabel),'อายุ (ปี)','อายุราชการ (จากประวัติยศ)'],rows:main},
+            {name:'ประวัติยศ',headers:['รหัสกำลังพล','ชื่อ–สกุล',...rankHeaders],rows:ranks},
+            {name:'ประวัติการฝึก',headers:['รหัสกำลังพล','ชื่อ–สกุล',...trainingHeaders],rows:training});
+        }
+        if(kind==='courses' || kind==='calendar') {
+          const main=[],trainees=[];
+          (data.courses||[]).forEach(d=>{
+            const c=d.course;
+            main.push([...valuesOf(c,courseColumns),d.trainees.length]);
+            traineeRows(d).forEach(row=>trainees.push([c.CourseID,c['ชื่อหลักสูตร'],c['รุ่น']||'',...row]));
+            documents.push('<article><h2>'+escapeHtml(courseLabel(c))+'</h2>'+detailTable(c,courseColumns)+'<h3>ผู้เข้ารับการฝึก '+d.trainees.length+' นาย</h3>'+htmlTable(traineeHeaders,traineeRows(d))+'</article>');
+          });
+          sheets.push({name:'ข้อมูลหลักสูตร',headers:[...courseColumns.map(columnLabel),'จำนวนผู้เข้ารับการฝึก'],rows:main},
+            {name:'ผู้เข้ารับการฝึก',headers:['รหัสหลักสูตร','ชื่อหลักสูตร','รุ่น',...traineeHeaders],rows:trainees});
+        }
+        if(kind==='tasks' || kind==='calendar') {
+          sheets.push({name:'งานและงานย่อย',headers:taskColumns.map(columnLabel),rows:tasksRows(selectedTasks)});
+          selectedTasks.forEach(t=>documents.push('<article><h2>'+escapeHtml(t['ชื่องาน'])+'</h2>'+detailTable({...t,'ความคืบหน้า':taskOverall(t)},taskColumns)+
+            '<h3>งานย่อย</h3>'+((t.subtasks||[]).map(sub=>'<h4>'+escapeHtml(sub['ชื่องาน'])+'</h4>'+detailTable({...sub,'ความคืบหน้า':sub['สถานะ']==='เสร็จสิ้น'?100:0},taskColumns)).join('') || '<p>ไม่มีงานย่อย</p>')+'</article>'));
+        }
+        if(pdf) await printReport(title, '<p>ข้อมูลตามผลค้นหาและตัวกรอง ณ เวลาส่งออก · '+escapeHtml(todayFileTag())+'</p>'+(documents.join('') || '<p>ไม่มีข้อมูล</p>'));
+        else { exportWorkbook(title,sheets); notify('ดาวน์โหลด Excel พร้อมรายละเอียดแล้ว'); }
+      } catch(e) { notify('ส่งออกไม่สำเร็จ: '+e.message,'err'); }
+      finally {exportBusy.value=false;}
+    }
+    async function printReport(title,body,calendar=false) {
+      const old=document.getElementById('report-print-frame'); if(old) old.remove();
+      const iframe=document.createElement('iframe'); iframe.id='report-print-frame';
+      iframe.style.cssText='position:fixed;left:-20000px;top:0;width:1123px;height:794px;border:0;';
+      document.body.appendChild(iframe);
+      const doc=iframe.contentDocument;
+      const fontLink=document.querySelector('link[href*="fonts.googleapis.com"]');
+      const fontMarkup=fontLink ? '<link rel="stylesheet" href="'+escapeHtml(fontLink.href)+'">' : '';
+      doc.open(); doc.write('<!doctype html><html lang="th"><head><meta charset="UTF-8"><title>'+escapeHtml(title)+'</title>'+fontMarkup+'<style>'+ 
+        '@page{size:A4 landscape;margin:'+(calendar?'0':'10mm')+'}*{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}body{margin:0;font:12px "Prompt",Tahoma,Arial,sans-serif;color:#172b40}h1{font-size:20px}h2{font-size:16px;margin-top:16px}h3{font-size:14px}table{width:100%;border-collapse:collapse;margin:10px 0;table-layout:fixed}th,td{border:1px solid #b8c4ce;padding:6px;text-align:left;overflow-wrap:anywhere;vertical-align:top}th{background:#e9eef2}thead{display:table-header-group}tr{break-inside:avoid}article+article{break-before:page}h2,h3,h4{break-after:avoid}.calendar-page{display:block;width:297mm;height:209.8mm;object-fit:contain}'+
+        '</style></head><body>'+(calendar?'':'<h1>'+escapeHtml(title)+'</h1>')+body+'</body></html>'); doc.close();
+      await Promise.all(Array.from(doc.images).map(img=>img.complete?Promise.resolve():new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('โหลดภาพสำหรับ PDF ไม่สำเร็จ'));})));
+      await Promise.all(Array.from(doc.querySelectorAll('link[rel=stylesheet]')).map(link=>link.sheet ? Promise.resolve() : new Promise(resolve=>{link.onload=resolve;link.onerror=resolve;setTimeout(resolve,5000);})));
+      if(doc.fonts) await doc.fonts.ready;
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      // Keep frame until next export so print-preview remains valid in asynchronous browsers.
+      iframe.contentWindow.focus(); iframe.contentWindow.print();
+    }
+    async function calendarA4Canvas() {
+      if(typeof html2canvas==='undefined') throw new Error('โหลดไลบรารีสร้างภาพไม่สำเร็จ กรุณารีเฟรช');
+      const refs={month:monthGridEl,week:weekGridEl,year:yearViewEl};
+      const source=refs[calView.value].value;
+      if(!source) throw new Error('ไม่พบปฏิทิน');
+      await nextTick(); if(document.fonts) await document.fonts.ready;
+      const stage=document.createElement('div');
+      stage.style.cssText='position:absolute;left:-20000px;top:0;width:1400px;padding:24px;background:#fff;color:#172b40;';
+      stage.style.setProperty('--navy','#0F2A43'); stage.style.setProperty('--gold','#C9A24B');
+      const heading=document.createElement('h2'); heading.textContent='ปฏิทิน — '+calendarTitle.value;
+      heading.style.cssText='font-size:24px;font-weight:600;margin:0 0 16px;'; stage.appendChild(heading);
+      const clone=source.cloneNode(true); stage.appendChild(clone); document.body.appendChild(stage);
+      try {
+        stage.querySelectorAll('.year-scroll-box').forEach(el=>{el.style.overflow='visible';el.style.maxHeight='none';});
+        stage.querySelectorAll('.year-scroll-box > div').forEach(el=>{el.style.minWidth='0';el.style.width='100%';});
+        stage.querySelectorAll('.truncate').forEach(el=>{el.style.whiteSpace='normal';el.style.overflow='visible';el.style.overflowWrap='anywhere';});
+        if(calView.value==='week') clone.style.gridTemplateColumns='repeat(7,minmax(0,1fr))';
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const width=stage.scrollWidth, height=stage.scrollHeight;
+        const sourceCanvas=await html2canvas(stage,{backgroundColor:'#ffffff',useCORS:true,scale:Math.min(2,8192/Math.max(width,height)),width,height,windowWidth:1440,windowHeight:height,scrollX:0,scrollY:0});
+        const out=document.createElement('canvas'); out.width=3508;out.height=2480;
+        const ctx=out.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,out.width,out.height);
+        const margin=80, ratio=Math.min((out.width-margin*2)/sourceCanvas.width,(out.height-margin*2)/sourceCanvas.height);
+        const w=sourceCanvas.width*ratio,h=sourceCanvas.height*ratio;
+        ctx.drawImage(sourceCanvas,(out.width-w)/2,(out.height-h)/2,w,h);
+        return out;
+      } finally { stage.remove(); }
+    }
+    async function exportCalendarFile(pdf) {
+      if(imageExportBusy.value) return;
+      imageExportBusy.value=true; closeExportMenu();
+      try {
+        const canvas=await calendarA4Canvas();
+        if(pdf) await printReport('ปฏิทิน_'+calendarTitle.value,'<img class="calendar-page" alt="ปฏิทิน" src="'+canvas.toDataURL('image/png')+'">',true);
+        else {
+          const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+          if(!blob) throw new Error('สร้างไฟล์ภาพไม่สำเร็จ');
+          const url=URL.createObjectURL(blob), a=document.createElement('a');
+          a.href=url;a.download=safeFileName('ปฏิทิน_'+calendarTitle.value)+'_'+todayFileTag()+'.png';a.click();
+          setTimeout(()=>URL.revokeObjectURL(url),30000);notify('ดาวน์โหลดภาพ A4 แนวนอนแล้ว');
+        }
+      } catch(e) {notify('ส่งออกปฏิทินไม่สำเร็จ: '+e.message,'err');}
+      finally {imageExportBusy.value=false;}
+    }
+    function exportCalendarPdf() { return exportCalendarFile(true); }
+
+    const pages = [
+      { id: 'dashboard', label: 'สรุป', icon: ICONS.dashboard },
+      { id: 'personnel', label: 'ทำเนียบกำลังพล', icon: ICONS.personnel },
+      { id: 'courses', label: 'การฝึก/หลักสูตร', icon: ICONS.courses },
+      { id: 'tasks', label: 'งาน', icon: ICONS.tasks },
+      { id: 'calendar', label: 'ปฏิทิน', icon: ICONS.calendar },
+      { id: 'history', label: 'ประวัติ', icon: ICONS.history }
+    ];
+    const currentPage = ref('dashboard');
+    const placeholderImg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23e2e8f0"/></svg>';
+
+    const initial = reactive({ staffList: [], courseTypes: [], personnelStatuses: [], units: [], rankList: [], bankList: [] });
+    const personnel = ref([]);
+    const courses = ref([]);
+    const tasks = ref([]);
+    const dashboard = ref({});
+    const events = ref([]);
+
+    const currentBEYear = new Date().getFullYear() + 543;
+    const selectedCompletedYearBE = ref(currentBEYear);
+    const yearOptionsBE = computed(() => { const arr = []; for (let i = 0; i < 6; i++) arr.push(currentBEYear - i); return arr; });
+    async function onChangeCompletedYear() {
+      try { dashboard.value = (await api('getDashboardSummary', selectedCompletedYearBE.value - 543)) || {}; } catch (e) {}
+    }
+
+    /* ---------- ตัวกรองรายการ ---------- */
+    const personnelSearch = ref('');
+    const personnelStatusFilter = ref('');
+    const filteredPersonnel = computed(() => {
+      let list = personnel.value || [];
+      if (personnelStatusFilter.value) list = list.filter(p => p['สถานะ'] === personnelStatusFilter.value);
+      if (personnelSearch.value) {
+        const q = personnelSearch.value.toLowerCase();
+        list = list.filter(p => String((p['ยศ']||'')+(p['ชื่อ']||'')+(p['สกุล']||'')+(p['สังกัด']||'')+(p['ตำแหน่ง']||'')).toLowerCase().includes(q));
+      }
+      return list.slice().sort(comparePersonnel);
+    });
+
+    // ส่งออกรายชื่อกำลังพลตามที่กรอง/ค้นหาอยู่ตอนนี้เป็น Excel
+    function exportPersonnelXlsx() { return exportDetailed('personnel'); }
+
+    const courseGroups = [
+      { key: 'all', label: 'ทั้งหมด' },
+      { key: 'กำลังจะฝึก', label: 'กำลังจะเกิดขึ้น' },
+      { key: 'กำลังดำเนินการ', label: 'กำลังดำเนินการ' },
+      { key: 'ผ่านแล้ว', label: 'ผ่านมาแล้ว' }
+    ];
+    const courseFilter = ref('all');
+    const courseSearch = ref('');
+    const filteredCourses = computed(() => {
+      const all = courses.value || [];
+      let list = courseFilter.value === 'all' ? all : all.filter(c => c.computedStatus === courseFilter.value);
+      if (courseSearch.value) {
+        const q = courseSearch.value.toLowerCase();
+        list = list.filter(c => String((c['ชื่อหลักสูตร']||'')+(c['รุ่น']||'')+(c['หน่วยจัดฝึก']||'')).toLowerCase().includes(q));
+      }
+      return list;
+    });
+
+    // ส่งออกรายการหลักสูตร/การฝึกตามที่กรอง/ค้นหาอยู่ตอนนี้เป็น Excel (รวมทุกรุ่นที่ตรงกับคำค้นหา)
+    function exportCoursesXlsx() { return exportDetailed('courses'); }
+
+    /* ---------- งาน ---------- */
+    const taskGroups = [
+      { key:'all', label:'ทั้งหมด' },
+      { key:'inprogress', label:'กำลังดำเนินการ' },
+      { key:'upcoming', label:'กำลังจะเกิดขึ้น' },
+      { key:'overdue', label:'เลยกำหนดส่ง' },
+      { key:'neardue', label:'ใกล้ครบกำหนด' },
+      { key:'done', label:'เสร็จสิ้น' }
+    ];
+    const taskFilter = ref('all');
+    const taskSearch = ref('');
+
+    function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+    function isDone(t) { return t['สถานะ'] === 'เสร็จสิ้น'; }
+    function isOverdue(t) {
+      if (isDone(t) || !t['วันกำหนดส่ง']) return false;
+      const due = new Date(t['วันกำหนดส่ง']); due.setHours(0,0,0,0);
+      return due < startOfToday();
+    }
+    function isNearDue(t) {
+      if (isDone(t) || !t['วันกำหนดส่ง']) return false;
+      const due = new Date(t['วันกำหนดส่ง']); due.setHours(0,0,0,0);
+      const today = startOfToday();
+      return due >= today && due <= new Date(today.getTime() + 7 * 86400000);
+    }
+    function isUpcoming(t) {
+      if (isDone(t) || !t['วันที่สั่งการ']) return false;
+      const start = new Date(t['วันที่สั่งการ']); start.setHours(0,0,0,0);
+      return start > startOfToday();
+    }
+    // ความคืบหน้ารวม: มีงานย่อย = % ของงานย่อยที่ติ๊กเสร็จ, ไม่มีงานย่อย = 0 หรือ 100 ตามสถานะงานหลักเอง
+    // ไม่มีการเลื่อนเองแล้ว คำนวณอัตโนมัติล้วนๆ
+    function taskOverall(t) {
+      const subs = t.subtasks || [];
+      if (subs.length) {
+        const doneCount = subs.filter(s => s['สถานะ'] === 'เสร็จสิ้น').length;
+        return Math.round((doneCount / subs.length) * 100);
+      }
+      return isDone(t) ? 100 : 0;
+    }
+
+    const filteredTasks = computed(() => {
+      let list = tasks.value || [];
+      const f = taskFilter.value;
+      if (f === 'done') list = list.filter(isDone);
+      else if (f === 'upcoming') list = list.filter(isUpcoming);
+      else if (f === 'overdue') list = list.filter(isOverdue);
+      else if (f === 'neardue') list = list.filter(isNearDue);
+      else if (f === 'inprogress') list = list.filter(t => !isDone(t) && !isUpcoming(t));
+
+      if (taskSearch.value) {
+        const q = taskSearch.value.toLowerCase();
+        list = list.filter(t => {
+          const main = String((t['ชื่องาน']||'')+(t['ผู้รับผิดชอบ']||'')+(t['หน่วยปลายทาง']||'')).toLowerCase().includes(q);
+          const sub = (t.subtasks||[]).some(s => String((s['ชื่องาน']||'')+(s['ผู้รับผิดชอบ']||'')+(s['หน่วยปลายทาง']||'')).toLowerCase().includes(q));
+          return main || sub;
+        });
+      }
+      return list;
+    });
+
+    // ส่งออกรายการงานตามที่กรอง/ค้นหาอยู่ตอนนี้เป็น Excel (แตกงานย่อยเป็นแถวแยก มีคอลัมน์ระบุว่าเป็นงานหลัก/งานย่อย)
+    function exportTasksXlsx() { return exportDetailed('tasks'); }
+
+    /* ---------- โหลดข้อมูล (คำขอเดียวต่อการรีเฟรช) ---------- */
+    async function loadAll() {
+      loadError.value = '';
+      busyCount.value++;
+      try {
+        const d = await gsRun('getBootstrapData', selectedCompletedYearBE.value - 543);
+        if (!d) throw new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์');
+        Object.assign(initial, d.initial || {});
+        personnel.value = d.personnel || [];
+        courses.value = d.courses || [];
+        dashboard.value = d.dashboard || {};
+        events.value = d.events || [];
+
+        const prevExpanded = {}, prevLinks = {};
+        (tasks.value || []).forEach(x => { prevExpanded[x.TaskID] = x._expanded; prevLinks[x.TaskID] = x._link; });
+        tasks.value = (d.tasks || []).map(x => Object.assign({}, x, {
+          subtasks: x.subtasks || [],
+          _expanded: prevExpanded[x.TaskID] || false,
+          _link: prevLinks[x.TaskID] || ''
+        }));
+      } catch (e) {
+        const msg = (e && e.message) ? e.message : 'เชื่อมต่อ Google Sheets ไม่สำเร็จ';
+        if (msg.indexOf('เข้าสู่ระบบ') > -1 && msg.indexOf('เซสชัน') > -1) {
+          clearSession();
+        } else {
+          loadError.value = msg;
+        }
+      } finally {
+        busyCount.value--;
+        initialLoading.value = false;
+      }
+    }
+    onMounted(restoreSession);
+
+    const activityLog = ref([]);
+    async function loadActivityLog() {
+      try { activityLog.value = (await api('getActivityLog', 150)) || []; } catch (e) {}
+    }
+    function activityColor(actionType) {
+      if (!actionType) return '#94A3B8';
+      if (actionType.indexOf('ลบ') > -1) return '#DC2626';
+      if (actionType.indexOf('แก้ไข') > -1 || actionType.indexOf('อัปเดต') > -1) return 'var(--gold)';
+      if (actionType.indexOf('ปิดงาน') > -1) return '#10B981';
+      return 'var(--navy)';
+    }
+    function exportActivityLogXlsx() {
+      exportXlsx('ประวัติการดำเนินการ', ['รหัสรายการ','วันที่-เวลา','ประเภท','รายละเอียด','ชื่อจริง–นามสกุล','ชื่อผู้ใช้','สิทธิ์','รหัสข้อมูลที่เกี่ยวข้อง'], activityLog.value.map(l=>[l.logId,l.timestamp,l.actionType,l.description,l.actorFullName,l.actorUsername,l.actorRole,l.relatedId]));
+    }
+
+    function goTo(id) {
+      currentPage.value = id;
+      exportMenuOpen.value = '';
+      if (id === 'history') loadActivityLog();
+    }
+    function goToPersonnel(status) { personnelStatusFilter.value = status || ''; personnelSearch.value = ''; goTo('personnel'); }
+    function goToCourses(filterKey) { courseFilter.value = filterKey; courseSearch.value = ''; goTo('courses'); }
+    function goToTasksFiltered(kind) { taskSearch.value = ''; taskFilter.value = kind || 'all'; goTo('tasks'); }
+    function goToTaskDetail(taskId) {
+      taskSearch.value = ''; taskFilter.value = 'all'; goTo('tasks');
+      nextTick(() => {
+        const t = (tasks.value || []).find(x => x.TaskID === taskId);
+        if (t) t._expanded = true;
+        const el = document.getElementById('task-' + taskId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+
+    function statusBadgeClass(status) {
+      if (['กำลังจะฝึก','มีแผนเข้ารับการฝึก'].indexOf(status) > -1) return 'badge-upcoming';
+      if (['กำลังดำเนินการ','อยู่ระหว่างการฝึก'].indexOf(status) > -1) return 'badge-ongoing';
+      if (['ผ่านแล้ว','เสร็จสิ้น','ปกติ'].indexOf(status) > -1) return 'badge-done';
+      return 'badge-unknown';
+    }
+    function statusRowClass(status) {
+      if (status === 'กำลังจะฝึก') return 'bg-amber-50';
+      if (status === 'กำลังดำเนินการ') return 'bg-blue-50';
+      if (status === 'ผ่านแล้ว') return 'bg-emerald-50';
+      return 'bg-slate-50';
+    }
+    function statusDotColor(status) {
+      if (['กำลังจะฝึก','มีแผนเข้ารับการฝึก'].indexOf(status) > -1) return '#D97706';
+      if (['กำลังดำเนินการ','อยู่ระหว่างการฝึก'].indexOf(status) > -1) return '#1D4ED8';
+      if (['ผ่านแล้ว','เสร็จสิ้น','ปกติ'].indexOf(status) > -1) return '#059669';
+      return '#94A3B8';
+    }
+    function eventPillClass(type) {
+      if (type === 'course') return 'badge-ongoing';
+      if (type === 'task-done') return 'badge-done';
+      return 'badge-upcoming';
+    }
+
+    /* ---------- กำลังพล ---------- */
+    const showAddPersonnel = ref(false);
+    const newPerson = reactive({ rank:'', firstName:'', lastName:'', position:'', unit:'', photoUrl:'', status:'ปกติ' });
+    function openAddPersonnel() { showAddPersonnel.value = true; }
+    async function submitAddPersonnel() {
+      if (!newPerson.rank || !newPerson.firstName || !newPerson.lastName) { notify('กรอกยศ ชื่อ และสกุลให้ครบก่อนบันทึก', 'err'); return; }
+      try {
+        await api('addPersonnel', Object.assign({}, newPerson));
+        showAddPersonnel.value = false;
+        Object.assign(newPerson, { rank:'', firstName:'', lastName:'', position:'', unit:'', photoUrl:'', status:'ปกติ' });
+        await loadAll();
+        notify('เพิ่มกำลังพลแล้ว');
+      } catch (e) {}
+    }
+
+    const selectedPersonnel = ref(null);
+    const addCourseToPersonId = ref('');
+    const editingExtra = ref(false);
+    const extraForm = reactive({ phone:'', bank:'', accountNumber:'', nationalId:'', militaryId:'', birthDate:'' });
+    const newRank = reactive({ rank:'', date:'' });
+    const editingCore = ref(false);
+    const coreForm = reactive({ rank:'', firstName:'', lastName:'', position:'', unit:'', photoUrl:'', status:'' });
+
+    // หลักสูตร/รุ่นที่ยังไม่เคยลงทะเบียนสำหรับคนนี้ (กันเพิ่มรุ่นเดิมซ้ำ แต่คนละรุ่น/CourseID ยังเลือกได้)
+    const availableCoursesForPerson = computed(() => {
+      if (!selectedPersonnel.value) return [];
+      const enrolled = new Set((selectedPersonnel.value.history || []).map(h => h.courseId));
+      return (courses.value || []).filter(c => !enrolled.has(c.CourseID));
+    });
+
+    // เติมค่าที่อาจหายไปให้ครบ ป้องกันหน้าเว็บพังเวลาข้อมูลไม่สมบูรณ์
+    function normalizeDetail(d) {
+      if (!d) return null;
+      d.person = d.person || {};
+      d.history = d.history || [];
+      d.rankHistory = d.rankHistory || [];
+      d.birthDate = d.birthDate || '';
+      return d;
+    }
+
+    async function openPersonnelDetail(id) {
+      try {
+        const d = normalizeDetail(await api('getPersonnelDetail', id));
+        if (!d) { notify('ไม่พบข้อมูลกำลังพลรายนี้ในชีท', 'err'); return; }
+        selectedPersonnel.value = d;
+        addCourseToPersonId.value = '';
+        editingExtra.value = false;
+        editingCore.value = false;
+        editingRankId.value = '';
+        newRank.rank = ''; newRank.date = '';
+      } catch (e) {}
+    }
+    function startEditCore() {
+      const p = selectedPersonnel.value.person;
+      coreForm.rank = p['ยศ'] || ''; coreForm.firstName = p['ชื่อ'] || ''; coreForm.lastName = p['สกุล'] || '';
+      coreForm.position = p['ตำแหน่ง'] || ''; coreForm.unit = p['สังกัด'] || '';
+      coreForm.photoUrl = p['รูปภาพ'] || ''; coreForm.status = p['สถานะ'] || '';
+      editingCore.value = true;
+    }
+    async function saveCore() {
+      const id = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('updatePersonnelCore', id, Object.assign({}, coreForm));
+        editingCore.value = false;
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', id));
+        await loadAll();
+        notify('บันทึกข้อมูลกำลังพลแล้ว');
+      } catch (e) {}
+    }
+    async function deletePersonnelConfirm() {
+      if (!confirm('ยืนยันการลบกำลังพลนี้\nประวัติการฝึกและประวัติยศที่เกี่ยวข้องจะถูกลบไปด้วย และกู้คืนไม่ได้')) return;
+      const id = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('deletePersonnel', id);
+        selectedPersonnel.value = null;
+        await loadAll();
+        notify('ลบกำลังพลแล้ว');
+      } catch (e) {}
+    }
+    function startEditExtra() {
+      const p = selectedPersonnel.value.person;
+      extraForm.phone = p['เบอร์โทรศัพท์'] || '';
+      extraForm.bank = p['ธนาคาร'] || '';
+      extraForm.accountNumber = p['เลขที่บัญชี'] || '';
+      extraForm.nationalId = p['เลขประจำตัวประชาชน'] || '';
+      extraForm.militaryId = p['เลขประจำตัวทหาร'] || '';
+      extraForm.birthDate = selectedPersonnel.value.birthDate || '';
+      editingExtra.value = true;
+    }
+    async function saveExtra() {
+      const id = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('updatePersonnelExtra', id, Object.assign({}, extraForm));
+        editingExtra.value = false;
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', id));
+        await loadAll();
+        notify('บันทึกข้อมูลส่วนตัวแล้ว');
+      } catch (e) {}
+    }
+    async function submitAddRank() {
+      if (!newRank.rank || !newRank.date) { notify('เลือกยศและวันที่ติดยศก่อน', 'err'); return; }
+      const id = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('addRankRecord', id, newRank.rank, newRank.date);
+        newRank.rank = ''; newRank.date = '';
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', id));
+        notify('เพิ่มประวัติยศแล้ว');
+      } catch (e) {}
+    }
+
+    // แก้ไข/ลบประวัติการติดยศ (คลิกรายการเพื่อเปิดฟอร์มแก้ไขแบบอินไลน์)
+    const editingRankId = ref('');
+    const rankEditForm = reactive({ rank: '', date: '' });
+    function startEditRank(r) {
+      editingRankId.value = r.recordId;
+      rankEditForm.rank = r.rank;
+      rankEditForm.date = r.date;
+    }
+    function cancelEditRank() { editingRankId.value = ''; }
+    async function saveEditRank() {
+      if (!rankEditForm.rank || !rankEditForm.date) { notify('เลือกยศและวันที่ให้ครบ', 'err'); return; }
+      const personId = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('updateRankRecord', editingRankId.value, rankEditForm.rank, rankEditForm.date);
+        editingRankId.value = '';
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', personId));
+        notify('บันทึกประวัติยศแล้ว');
+      } catch (e) {}
+    }
+    async function deleteRankConfirm(r) {
+      if (!confirm('ลบประวัติการติดยศ "' + r.rank + '" (' + r.date + ') ใช่หรือไม่')) return;
+      const personId = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('deleteRankRecord', r.recordId);
+        editingRankId.value = '';
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', personId));
+        notify('ลบประวัติยศแล้ว');
+      } catch (e) {}
+    }
+    async function submitAddCourseToPerson() {
+      if (!addCourseToPersonId.value) { notify('เลือกหลักสูตรก่อน', 'err'); return; }
+      const id = selectedPersonnel.value.person.PersonnelID;
+      try {
+        await api('addTrainingRecord', id, addCourseToPersonId.value);
+        addCourseToPersonId.value = '';
+        selectedPersonnel.value = normalizeDetail(await api('getPersonnelDetail', id));
+        await loadAll();
+        notify('เพิ่มหลักสูตรให้กำลังพลแล้ว');
+      } catch (e) {}
+    }
+
+    /* ---------- หลักสูตร ---------- */
+    const showAddCourse = ref(false);
+    const newCourse = reactive({ name:'', batch:'', type:'', startDate:'', endDate:'', unit:'' });
+    async function submitAddCourse() {
+      if (!newCourse.name || !newCourse.type || !newCourse.startDate || !newCourse.endDate) { notify('กรอกชื่อ ประเภท และช่วงวันที่ให้ครบ', 'err'); return; }
+      try {
+        await api('addCourse', Object.assign({}, newCourse));
+        showAddCourse.value = false;
+        Object.assign(newCourse, { name:'', batch:'', type:'', startDate:'', endDate:'', unit:'' });
+        await loadAll();
+        notify('เพิ่มหลักสูตรแล้ว');
+      } catch (e) {}
+    }
+
+    const selectedCourse = ref(null);
+    const editingCourseDetail = ref(false);
+    const courseEditForm = reactive({ name:'', batch:'', type:'', startDate:'', endDate:'', unit:'' });
+    const showAssignTrainees = ref(false);
+    const assignSearch = ref('');
+    const assignSelected = reactive(new Set());
+    async function openCourseDetail(courseId) {
+      try {
+        const d = await api('getCourseDetail', courseId);
+        if (!d) { notify('ไม่พบหลักสูตรนี้ในชีท', 'err'); return; }
+        d.trainees = d.trainees || [];
+        selectedCourse.value = d;
+        editingCourseDetail.value = false;
+        showAssignTrainees.value = false;
+        assignSearch.value = '';
+        assignSelected.clear();
+      } catch (e) {}
+    }
+    const availableForAssign = computed(() => {
+      if (!selectedCourse.value) return [];
+      const existing = new Set((selectedCourse.value.trainees || []).map(t => t.personnelId));
+      let list = (personnel.value || []).filter(p => !existing.has(p.PersonnelID));
+      if (assignSearch.value) {
+        const q = assignSearch.value.toLowerCase();
+        list = list.filter(p => String((p['ยศ']||'')+(p['ชื่อ']||'')+(p['สกุล']||'')+(p['สังกัด']||'')).toLowerCase().includes(q));
+      }
+      return list;
+    });
+    function toggleAssignTrainees() {
+      showAssignTrainees.value = !showAssignTrainees.value;
+      if (showAssignTrainees.value) { assignSearch.value = ''; assignSelected.clear(); }
+    }
+    function toggleAssignPerson(id) {
+      if (assignSelected.has(id)) assignSelected.delete(id); else assignSelected.add(id);
+    }
+    async function submitAssignTrainees() {
+      if (!assignSelected.size) return;
+      const courseId = selectedCourse.value.course.CourseID;
+      try {
+        await api('assignTrainees', courseId, Array.from(assignSelected));
+        const d = await api('getCourseDetail', courseId);
+        d.trainees = d.trainees || [];
+        selectedCourse.value = d;
+        showAssignTrainees.value = false;
+        assignSelected.clear();
+        await loadAll();
+        notify('เพิ่มกำลังพลเข้าฝึกแล้ว');
+      } catch (e) {}
+    }
+    function goToPersonFromCourse(personId) { selectedCourse.value = null; openPersonnelDetail(personId); }
+    async function deleteCourseConfirm() {
+      if (!confirm('ยืนยันการลบหลักสูตรนี้\nประวัติการฝึกของกำลังพลที่ผูกกับหลักสูตรนี้จะถูกลบไปด้วย และกู้คืนไม่ได้')) return;
+      const id = selectedCourse.value.course.CourseID;
+      try {
+        await api('deleteCourse', id);
+        selectedCourse.value = null;
+        await loadAll();
+        notify('ลบหลักสูตรแล้ว');
+      } catch (e) {}
+    }
+    function startEditCourseDetail() {
+      const c = selectedCourse.value.course;
+      courseEditForm.name = c['ชื่อหลักสูตร'] || '';
+      courseEditForm.batch = c['รุ่น'] || '';
+      courseEditForm.type = c['ประเภทหลักสูตร'] || '';
+      courseEditForm.startDate = c['วันเริ่ม'] || '';
+      courseEditForm.endDate = c['วันสิ้นสุด'] || '';
+      courseEditForm.unit = c['หน่วยจัดฝึก'] || '';
+      editingCourseDetail.value = true;
+    }
+    async function saveCourseDetail() {
+      const id = selectedCourse.value.course.CourseID;
+      try {
+        await api('updateCourse', id, Object.assign({}, courseEditForm));
+        editingCourseDetail.value = false;
+        selectedCourse.value = await api('getCourseDetail', id);
+        await loadAll();
+        notify('บันทึกหลักสูตรแล้ว');
+      } catch (e) {}
+    }
+
+    /* ---------- เพิ่มงาน ---------- */
+    const showAddTask = ref(false);
+    const newTask = reactive({ main: { name:'', assignee:'', orderDate:'', dueDate:'', destinationUnit:'' }, subtasks: [] });
+    function openAddTask() { showAddTask.value = true; }
+    function addSubtaskRow() { newTask.subtasks.push({ name:'', assignee:'', orderDate:'', dueDate:'', destinationUnit:'' }); }
+    async function submitAddTask() {
+      const m = newTask.main;
+      if (!m.name || !m.assignee || !m.orderDate || !m.dueDate || !m.destinationUnit) { notify('กรอกข้อมูลงานหลักให้ครบก่อนบันทึก', 'err'); return; }
+      try {
+        await api('createTaskWithSubtasks', Object.assign({}, m), newTask.subtasks.filter(s => s.name).map(s => Object.assign({}, s)));
+        showAddTask.value = false;
+        newTask.main = { name:'', assignee:'', orderDate:'', dueDate:'', destinationUnit:'' };
+        newTask.subtasks = [];
+        await loadAll();
+        notify('เพิ่มงานแล้ว');
+      } catch (e) {}
+    }
+
+    /* ---------- แก้ไขงาน ---------- */
+    const showEditTask = ref(false);
+    const editForm = reactive({
+      taskId: '',
+      main: { name:'', assignee:'', orderDate:'', dueDate:'', destinationUnit:'' },
+      subtasks: [],
+      newSubtasks: [],
+      deletedIds: []
+    });
+    function openEditTask(t) {
+      editForm.taskId = t.TaskID;
+      editForm.main = {
+        name: t['ชื่องาน'] || '', assignee: t['ผู้รับผิดชอบ'] || '',
+        orderDate: t['วันที่สั่งการ'] || '', dueDate: t['วันกำหนดส่ง'] || '',
+        destinationUnit: t['หน่วยปลายทาง'] || ''
+      };
+      editForm.subtasks = (t.subtasks || []).map(s => ({
+        taskId: s.TaskID, name: s['ชื่องาน'] || '', assignee: s['ผู้รับผิดชอบ'] || '',
+        orderDate: s['วันที่สั่งการ'] || '', dueDate: s['วันกำหนดส่ง'] || '',
+        destinationUnit: s['หน่วยปลายทาง'] || '', done: s['สถานะ'] === 'เสร็จสิ้น'
+      }));
+      editForm.newSubtasks = [];
+      editForm.deletedIds = [];
+      showEditTask.value = true;
+    }
+    function addEditSubtaskRow() { editForm.newSubtasks.push({ name:'', assignee:'', orderDate:'', dueDate:'', destinationUnit:'' }); }
+    function removeExistingSubtask(i) {
+      const st = editForm.subtasks[i];
+      if (!confirm('ลบงานย่อย "' + (st.name || '') + '" เมื่อกดบันทึกใช่หรือไม่')) return;
+      editForm.deletedIds.push(st.taskId);
+      editForm.subtasks.splice(i, 1);
+    }
+    async function saveTaskEdits() {
+      if (!editForm.main.name) { notify('ชื่องานหลักห้ามว่าง', 'err'); return; }
+      const payload = {
+        taskId: editForm.taskId,
+        main: Object.assign({}, editForm.main),
+        subtasks: editForm.subtasks.map(s => ({
+          taskId: s.taskId, name: s.name, assignee: s.assignee,
+          orderDate: s.orderDate, dueDate: s.dueDate, destinationUnit: s.destinationUnit
+        })),
+        newSubtasks: editForm.newSubtasks.filter(s => s.name).map(s => Object.assign({}, s)),
+        deletedIds: editForm.deletedIds.slice()
+      };
+      try {
+        await api('saveTaskEdits', payload);
+        showEditTask.value = false;
+        await loadAll();
+        notify('บันทึกการแก้ไขงานแล้ว');
+      } catch (e) {}
+    }
+    async function deleteTaskConfirm() {
+      if (!confirm('ยืนยันการลบงานนี้\nงานย่อยทั้งหมดจะถูกลบไปด้วย และกู้คืนไม่ได้')) return;
+      try {
+        await api('deleteTask', editForm.taskId);
+        showEditTask.value = false;
+        await loadAll();
+        notify('ลบงานแล้ว');
+      } catch (e) {}
+    }
+
+    // ติ๊ก/เอาติ๊กออกของงานย่อย 1 รายการ — เบาๆ ไม่ต้องมีลิงก์หลักฐาน (ใช้แค่เป็นเช็คลิสต์ย่อย)
+    async function onToggleSubtaskDone(s) {
+      const done = s['สถานะ'] !== 'เสร็จสิ้น';
+      try {
+        await api('setSubtaskStatus', s.TaskID, done);
+        await loadAll();
+      } catch (e) {}
+    }
+    async function completeTask(t) {
+      try {
+        await api('markTaskComplete', t.TaskID, t._link);
+        await loadAll();
+        notify('ปิดงานเรียบร้อย');
+      } catch (e) {}
+    }
+
+    // ตัวจัดการเช็คบ็อกซ์บนหัวการ์ดงาน: ติ๊ก = ปิดงาน (ต้องมีลิงก์ และถ้ามีงานย่อยต้องติ๊กครบทุกรายการก่อน), เอาติ๊กออก = เปิดงานใหม่
+    async function onToggleDone(t) {
+      if (isDone(t)) {
+        if (!confirm('เปิดงาน "' + t['ชื่องาน'] + '" อีกครั้งใช่หรือไม่')) return;
+        try {
+          await api('reopenTask', t.TaskID);
+          await loadAll();
+          notify('เปิดงานอีกครั้งแล้ว');
+        } catch (e) {}
+        return;
+      }
+      const hasSubs = (t.subtasks || []).length > 0;
+      if (hasSubs && taskOverall(t) < 100) {
+        t._expanded = true;
+        notify('ติ๊กงานย่อยให้ครบทุกรายการก่อน จึงจะปิดงานหลักได้', 'err');
+        nextTick(() => {
+          const el = document.getElementById('task-' + t.TaskID);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        return;
+      }
+      if (!t._link) {
+        t._expanded = true;
+        notify('แนบลิงก์หลักฐานก่อน จึงจะติ๊กว่าเสร็จได้', 'err');
+        nextTick(() => {
+          const el = document.getElementById('task-' + t.TaskID);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        return;
+      }
+      await completeTask(t);
+    }
+
+    /* ---------- ปฏิทิน ---------- */
+    const calView = ref('month');
+    const yearType = ref('calendar');
+    const calAnchor = ref(new Date());
+
+    // template ref สำหรับถ่ายภาพปฏิทินแต่ละมุมมอง (ส่งออกเป็นรูปภาพ)
+    const monthGridEl = ref(null);
+    const weekGridEl = ref(null);
+    const yearViewEl = ref(null);
+    function exportCalendarImage() { return exportCalendarFile(false); }
+
+    function sameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+    function eventsBetween(start, end) {
+      return (events.value || []).filter(e => {
+        const es = new Date(e.start), ee = new Date(e.end || e.start);
+        if (isNaN(es.getTime())) return false;
+        return es <= end && ee >= start;
+      }).sort((a,b)=>statusPriority(eventStatus(a))-statusPriority(eventStatus(b)) || String(a.start).localeCompare(String(b.start)) || eventLabel(a).localeCompare(eventLabel(b),'th'));
+    }
+
+    const calendarTitle = computed(() => {
+      const d = calAnchor.value;
+      if (calView.value === 'month') return d.toLocaleDateString('th-TH', { year:'numeric', month:'long' });
+      if (calView.value === 'week') return 'สัปดาห์ของ ' + d.toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'numeric' });
+      return yearType.value === 'calendar' ? 'ปี พ.ศ. ' + (d.getFullYear()+543) : 'ปีงบประมาณ ' + (d.getMonth()>=9 ? d.getFullYear()+544 : d.getFullYear()+543);
+    });
+
+    const monthGrid = computed(() => {
+      const d = calAnchor.value;
+      const today = new Date();
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
+      const days = [];
+      for (let i = 0; i < 42; i++) {
+        const day = new Date(gridStart); day.setDate(gridStart.getDate() + i); day.setHours(0,0,0,0);
+        const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
+        days.push({ date: day, inMonth: day.getMonth() === d.getMonth(), isToday: sameDay(day, today), events: eventsBetween(day, dayEnd) });
+      }
+      return days;
+    });
+
+    const weekGrid = computed(() => {
+      const d = calAnchor.value;
+      const today = new Date();
+      const start = new Date(d); start.setDate(d.getDate() - d.getDay());
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const day = new Date(start); day.setDate(start.getDate() + i); day.setHours(0,0,0,0);
+        const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
+        days.push({ date: day, isToday: sameDay(day, today), events: eventsBetween(day, dayEnd) });
+      }
+      return days;
+    });
+
+    const courseColors = computed(() => {
+      const map = new Map();
+      const sorted = (courses.value || []).slice().sort((a,b) => String(a.CourseID).localeCompare(String(b.CourseID)));
+      sorted.forEach((c,i) => map.set(c.CourseID, 'hsl(' + ((i*137.508+8)%360).toFixed(2) + ',65%,38%)'));
+      return map;
+    });
+    function courseLabel(c) { return (c['ชื่อหลักสูตร'] || '') + (c['รุ่น'] ? ' รุ่น ' + c['รุ่น'] : ''); }
+    function statusPriority(status) { return ({'กำลังดำเนินการ':0,'กำลังฝึก':0,'กำลังจะฝึก':1,'ผ่านแล้ว':2,'ผ่านไปแล้ว':2})[status] ?? 3; }
+    function eventStatus(e) {
+      if(e.type === 'course') { const c = courses.value.find(c=>c.CourseID === e.id); return c ? c.computedStatus : ''; }
+      return e.type === 'task-done' ? 'ผ่านแล้ว' : (new Date(e.start) > startOfToday() ? 'กำลังจะฝึก' : 'กำลังดำเนินการ');
+    }
+    function eventStyle(e) { return e.type === 'course' ? {background:courseColors.value.get(e.id),color:'#fff',whiteSpace:'normal',overflowWrap:'anywhere'} : {whiteSpace:'normal'}; }
+    function eventLabel(e) { const c = e.type === 'course' && courses.value.find(c=>c.CourseID===e.id); return c ? courseLabel(c) : e.title; }
+    function comparePersonnel(a,b) {
+      const states = ['ปกติ','มีแผนเข้ารับการฝึก','อยู่ระหว่างการฝึก','ช่วยราชการ'];
+      const order = (list,v) => {const n=list.indexOf(v);return n<0 ? 999:n;};
+      return order(states,a['สถานะ'])-order(states,b['สถานะ']) ||
+        initial.rankList.indexOf(b['ยศ'])-initial.rankList.indexOf(a['ยศ']) ||
+        order(initial.units,a['สังกัด'])-order(initial.units,b['สังกัด']) ||
+        String(a['สังกัด']||'').localeCompare(String(b['สังกัด']||''),'th') ||
+        String(a['ชื่อ']||'').localeCompare(String(b['ชื่อ']||''),'th') ||
+        String(a['สกุล']||'').localeCompare(String(b['สกุล']||''),'th') || String(a.PersonnelID).localeCompare(String(b.PersonnelID));
+    }
+
+    function buildYearWindow(anchorDate, yType) {
+      const baseYear = anchorDate.getFullYear() - (yType === 'fiscal' && anchorDate.getMonth()<9 ? 1 : 0);
+      const monthOrder = yType === 'calendar' ? [0,1,2,3,4,5,6,7,8,9,10,11] : [9,10,11,0,1,2,3,4,5,6,7,8];
+      let offset = 0;
+      const months = monthOrder.map(m => {
+        const year = (yType === 'fiscal' && m < 9) ? baseYear + 1 : baseYear;
+        const days = new Date(year, m + 1, 0).getDate();
+        const mo = { year: year, month: m, days: days, startOffset: offset, shortLabel: new Date(year, m, 1).toLocaleDateString('th-TH', { month:'short' }) + ' ' + String(year + 543).slice(-2) };
+        offset += days;
+        return mo;
+      });
+      return { months: months, totalDays: offset, startDate: new Date(months[0].year, months[0].month, 1) };
+    }
+    function dateToOffset(dateStr, win) {
+      if (!dateStr) return -99999;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return -99999;
+      d.setHours(0,0,0,0);
+      return Math.round((d.getTime() - win.startDate.getTime()) / 86400000);
+    }
+    const yearWindow = computed(() => buildYearWindow(calAnchor.value, yearType.value));
+    // แท่งเวลาแบบทั่วไป (ใช้ได้ทั้งหลักสูตรและงาน เพราะมีแค่วันเริ่ม/วันสิ้นสุดเหมือนกัน)
+    function itemBar(startStr, endStr) {
+      const w = yearWindow.value;
+      let s = dateToOffset(startStr, w);
+      let e = dateToOffset(endStr || startStr, w);
+      if (s === -99999) return null;
+      if (e < 0 || s > w.totalDays - 1) return null;
+      s = Math.max(0, s); e = Math.min(w.totalDays - 1, e);
+      if (e < s) e = s;
+      return { left: (s / w.totalDays * 100), width: ((e - s + 1) / w.totalDays * 100) };
+    }
+    // ---- ระบบแท่งเวลาแบบทั่วไป ใช้ได้ทั้งหลักสูตรและงาน จะได้หน้าตาเหมือนกันทุกตาราง ----
+    // แปลงหลักสูตร/งาน ให้เป็นรูปแบบเดียวกัน { name, bar, color, title, onClick } ก่อนค่อยจัดกลุ่มเป็นแถว
+    function courseGenericItem(c) {
+      const name = c['ชื่อหลักสูตร'] || '(ไม่ระบุชื่อ)';
+      return {
+        name: name,
+        kind: 'course',
+        bar: itemBar(c['วันเริ่ม'], c['วันสิ้นสุด']),
+        color: courseColors.value.get(c.CourseID),
+        status: c.computedStatus,
+        id: c.CourseID,
+        label: (c['รุ่น'] ? 'รุ่น ' + c['รุ่น'] : name),
+        sortKey: c['วันเริ่ม'] || '',
+        batch: c['รุ่น'] || '',
+        title: courseLabel(c) + ' · ' + c.computedStatus + ' (' + (c['วันเริ่ม'] || '-') + ' — ' + (c['วันสิ้นสุด'] || '-') + ')',
+        onClick: () => openCourseDetail(c.CourseID)
+      };
+    }
+    function taskBarColor(t) {
+      if (isDone(t)) return '#059669';
+      if (isOverdue(t)) return '#DC2626';
+      return 'var(--gold)';
+    }
+    function taskGenericItem(t) {
+      const start = t['วันที่สั่งการ'] || '';
+      const end = t['วันกำหนดส่ง'] || start;
+      const name = t['ชื่องาน'] || '(ไม่ระบุชื่อ)';
+      return {
+        name: name,
+        kind: 'task',
+        bar: itemBar(start, end),
+        color: taskBarColor(t),
+        status: isDone(t) ? 'ผ่านแล้ว' : (isUpcoming(t) ? 'กำลังจะฝึก' : 'กำลังดำเนินการ'),
+        id:t.TaskID, label:name,
+        sortKey: start,
+        title: name + ' (' + (start || '-') + ' — ' + (end || '-') + ')',
+        onClick: () => goToTaskDetail(t.TaskID)
+      };
+    }
+    // จัดกลุ่มรายการที่ชื่อซ้ำกันไว้แถวเดียวกัน (คนละรุ่น/คนละช่วงของชื่อเดียวกัน) แล้วไล่สีให้ต่างกันถ้ายังไม่ได้กำหนดสีมา
+    function buildGenericGanttRows(items) {
+      const groups = new Map();
+      (items || []).filter(it=>it.bar).forEach(it => {
+        const key=it.kind + ':' + it.name.trim();
+        if(!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({...it});
+      });
+      return [...groups.entries()].map(([key,instances]) => {
+        instances.sort((a,b)=>String(a.sortKey).localeCompare(String(b.sortKey)) || String(a.id).localeCompare(String(b.id)));
+        const ends=[];
+        instances.forEach(it=>{
+          let lane=ends.findIndex(end=>end <= it.bar.left);
+          if(lane<0) lane=ends.length;
+          ends[lane]=it.bar.left+it.bar.width;
+          it.lane=lane;
+        });
+        return {key,name:instances[0].name,instances,height:Math.max(1,ends.length)*26,
+          priority:Math.min(...instances.map(it=>statusPriority(it.status)))};
+      }).sort((a,b)=>a.priority-b.priority || a.name.localeCompare(b.name,'th'));
+    }
+    function coursesOfTypes(types) {
+      return (courses.value || []).filter(c => types.indexOf(c['ประเภทหลักสูตร']) > -1);
+    }
+
+    // ส่วนที่ 1: ภาพรวมทั้งหมด — หลักสูตร/การฝึกทุกประเภท + การปฏิบัติงาน รวมเป็นตารางเดียว แยกด้วยสีตัวหนังสือ
+    const overviewRows = computed(() => buildGenericGanttRows(
+      (courses.value || []).map(courseGenericItem).concat((tasks.value || []).map(taskGenericItem))
+    ));
+
+    // ส่วนที่ 2: แยกตามหมวดหมู่ — การฝึกอบรมภายในหน่วย + การฝึกประจำปี ถูกรวมเป็นหมวด "การฝึก" หมวดเดียว
+    const categoryGroups = computed(() => [
+      { key: 'cat-tasks', label: 'การปฏิบัติงาน', accent: '#C9A24B',
+        rows: buildGenericGanttRows((tasks.value || []).map(taskGenericItem)) },
+      { key: 'cat-career', label: 'หลักสูตรตามแนวทางรับราชการ', accent: '#2563EB',
+        rows: buildGenericGanttRows(coursesOfTypes(['หลักสูตรตามแนวทางรับราชการ']).map(courseGenericItem)) },
+      { key: 'cat-knowledge', label: 'หลักสูตรเพิ่มพูนความรู้', accent: '#059669',
+        rows: buildGenericGanttRows(coursesOfTypes(['หลักสูตรเพิ่มพูนความรู้']).map(courseGenericItem)) },
+      { key: 'cat-training', label: 'การฝึก (การฝึกอบรมภายในหน่วย + การฝึกประจำปี)', accent: '#9333EA',
+        rows: buildGenericGanttRows(coursesOfTypes(['การฝึกอบรมภายในหน่วย', 'การฝึกประจำปี']).map(courseGenericItem)) }
+    ]);
+
+    // ส่งออกรายการทั้งหมดที่อยู่ในช่วงปีที่กำลังดูอยู่ (หลักสูตร/การฝึก + งานหลัก) เป็น Excel แบบตาราง
+    function exportCalendarYearXlsx() { return exportDetailed('calendar'); }
+
+    function shiftCalendar(dir) {
+      const d = new Date(calAnchor.value);
+      if (calView.value === 'month') d.setMonth(d.getMonth() + dir);
+      else if (calView.value === 'week') d.setDate(d.getDate() + dir * 7);
+      else d.setFullYear(d.getFullYear() + dir);
+      calAnchor.value = d;
+    }
+
+    // ตัวเลือกปีแบบดรอปดาวน์สำหรับมุมมองรายปี ย้อนหลังได้ไกลกว่าการกดทีละปี
+    const calendarYearBE = computed({
+      get() { return calAnchor.value.getFullYear() + 543 + (yearType.value==='fiscal' && calAnchor.value.getMonth()>=9 ? 1 : 0); },
+      set(v) {
+        const d = new Date(calAnchor.value);
+        d.setFullYear(v - 543 - (yearType.value==='fiscal' && d.getMonth()>=9 ? 1 : 0));
+        calAnchor.value = d;
+      }
+    });
+    const calendarYearOptionsBE = computed(() => {
+      const cur = new Date().getFullYear() + 543;
+      const arr = [];
+      for (let y = cur + 5; y >= cur - 40; y--) arr.push(y);
+      return arr;
+    });
+
+    return {
+      loggedIn, currentUser, isEditor, loginForm, loginError, loginBusy, submitLogin, doLogout,
+      buildTag, mockMode, initialLoading, loadError, busy, toast, loadAll,
+      pages, currentPage, goTo, placeholderImg,
+      initial, personnel, courses, tasks, dashboard,
+      selectedCompletedYearBE, yearOptionsBE, onChangeCompletedYear,
+      personnelSearch, personnelStatusFilter, filteredPersonnel,
+      goToPersonnel, goToCourses, goToTaskDetail, goToTasksFiltered,
+      courseGroups, courseFilter, courseSearch, filteredCourses,
+      taskGroups, taskFilter, taskSearch, filteredTasks, taskOverall, isDone, isOverdue, isNearDue, onToggleDone, onToggleSubtaskDone,
+      statusBadgeClass, statusRowClass, statusDotColor, eventPillClass,
+      showAddPersonnel, newPerson, openAddPersonnel, submitAddPersonnel,
+      selectedPersonnel, addCourseToPersonId, availableCoursesForPerson, openPersonnelDetail, submitAddCourseToPerson,
+      editingExtra, extraForm, startEditExtra, saveExtra, newRank, submitAddRank,
+      editingRankId, rankEditForm, startEditRank, cancelEditRank, saveEditRank, deleteRankConfirm,
+      editingCore, coreForm, startEditCore, saveCore, deletePersonnelConfirm,
+      showAddCourse, newCourse, submitAddCourse, selectedCourse, openCourseDetail, goToPersonFromCourse, deleteCourseConfirm,
+      editingCourseDetail, courseEditForm, startEditCourseDetail, saveCourseDetail,
+      showAssignTrainees, assignSearch, assignSelected, availableForAssign, toggleAssignTrainees, toggleAssignPerson, submitAssignTrainees,
+      showAddTask, newTask, openAddTask, addSubtaskRow, submitAddTask, completeTask,
+      showEditTask, editForm, openEditTask, addEditSubtaskRow, removeExistingSubtask, saveTaskEdits, deleteTaskConfirm,
+      calView, yearType, calendarTitle, monthGrid, weekGrid, shiftCalendar, courseLabel, eventStyle, eventLabel,
+      calendarYearBE, calendarYearOptionsBE,
+      yearWindow, overviewRows, categoryGroups,
+      monthGridEl, weekGridEl, yearViewEl,
+      activityLog, activityColor,
+      exportMenuOpen, toggleExportMenu, imageExportBusy,
+      exportPersonnelXlsx, exportCoursesXlsx, exportTasksXlsx, exportActivityLogXlsx,
+      exportCalendarImage, exportCalendarYearXlsx, printPage
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
